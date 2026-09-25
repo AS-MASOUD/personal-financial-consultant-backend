@@ -1,0 +1,118 @@
+import uuid
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_EVEN, Decimal
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from src.app.core.exceptions import EntityConflictException, EntityNotFoundException
+from src.app.database.models import AssetModel, AssetPositionModel
+from src.modules.assets.application.dtos import AssetCreate, AssetPositionResponse, AssetUpdate
+
+
+class AssetService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def list_assets(self, asset_class: str | None = None) -> list[AssetModel]:
+        stmt = select(AssetModel)
+        if asset_class:
+            stmt = stmt.where(AssetModel.asset_class == asset_class)
+        stmt = stmt.order_by(AssetModel.symbol)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_asset(self, asset_id: uuid.UUID) -> AssetModel:
+        stmt = select(AssetModel).where(AssetModel.id == asset_id)
+        result = await self.db.execute(stmt)
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise EntityNotFoundException("Asset", asset_id)
+        return asset
+
+    async def create_asset(self, payload: AssetCreate) -> AssetModel:
+        # Check duplicate symbol
+        stmt = select(AssetModel).where(AssetModel.symbol == payload.symbol.upper())
+        result = await self.db.execute(stmt)
+        if result.scalar_one_or_none():
+            raise EntityConflictException(f"Asset with symbol '{payload.symbol}' already exists.")
+
+        now = datetime.now(UTC)
+        asset = AssetModel(
+            symbol=payload.symbol.upper(),
+            name=payload.name,
+            asset_class=payload.asset_class,
+            currency=payload.currency.value,
+            current_price=payload.initial_price,
+            price_updated_at=now if payload.initial_price > Decimal("0") else None,
+            notes=payload.notes,
+        )
+        self.db.add(asset)
+        await self.db.flush()
+        await self.db.refresh(asset)
+        return asset
+
+    async def update_asset(self, asset_id: uuid.UUID, payload: AssetUpdate) -> AssetModel:
+        asset = await self.get_asset(asset_id)
+        update_data = payload.model_dump(exclude_unset=True)
+        if "current_price" in update_data and update_data["current_price"] is not None:
+            asset.price_updated_at = datetime.now(UTC)
+        for field, value in update_data.items():
+            setattr(asset, field, value)
+        await self.db.flush()
+        await self.db.refresh(asset)
+        return asset
+
+    async def delete_asset(self, asset_id: uuid.UUID) -> None:
+        asset = await self.get_asset(asset_id)
+        await self.db.delete(asset)
+        await self.db.flush()
+
+    async def list_positions(
+        self, account_id: uuid.UUID | None = None
+    ) -> list[AssetPositionResponse]:
+        stmt = select(AssetPositionModel).options(selectinload(AssetPositionModel.asset))
+        if account_id:
+            stmt = stmt.where(AssetPositionModel.account_id == account_id)
+        result = await self.db.execute(stmt)
+        positions = result.scalars().all()
+
+        computed_positions: list[AssetPositionResponse] = []
+        for pos in positions:
+            current_price = pos.asset.current_price
+            current_value = (pos.quantity * current_price).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+            )
+            total_cost = (pos.quantity * pos.average_cost_basis).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+            )
+            unrealized_pnl = (current_value - total_cost).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+            )
+
+            if total_cost > Decimal("0"):
+                pnl_percent = ((unrealized_pnl / total_cost) * Decimal("100")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_EVEN
+                )
+            else:
+                pnl_percent = Decimal("0.00")
+
+            computed_positions.append(
+                AssetPositionResponse(
+                    id=pos.id,
+                    account_id=pos.account_id,
+                    asset_id=pos.asset_id,
+                    quantity=pos.quantity,
+                    average_cost_basis=pos.average_cost_basis,
+                    current_price=current_price,
+                    current_value=current_value,
+                    unrealized_pnl=unrealized_pnl,
+                    unrealized_pnl_percent=pnl_percent,
+                    asset_symbol=pos.asset.symbol,
+                    asset_name=pos.asset.name,
+                    asset_class=pos.asset.asset_class,
+                    currency=pos.asset.currency,
+                )
+            )
+        return computed_positions
