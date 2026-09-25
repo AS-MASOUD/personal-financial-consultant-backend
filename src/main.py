@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -104,6 +104,23 @@ def create_application() -> FastAPI:
     # Routers
     app.include_router(health_router)
     app.include_router(api_v1_router, prefix="/api/v1")
+
+    # Root status and Favicon handler
+    @app.get("/", include_in_schema=False)
+    async def root() -> JSONResponse:
+        return JSONResponse(
+            content={
+                "name": settings.PROJECT_NAME,
+                "version": "0.1.0",
+                "status": "operational",
+                "docs_url": "/docs",
+                "api_v1": "/api/v1",
+            }
+        )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return app
 
