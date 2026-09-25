@@ -3,6 +3,8 @@ from enum import StrEnum
 
 class Currency(StrEnum):
     USD = "USD"
+    TOMAN = "TOMAN"
+    IRR = "IRR"
     EUR = "EUR"
     GBP = "GBP"
     CAD = "CAD"
