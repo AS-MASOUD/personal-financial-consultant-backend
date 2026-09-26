@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import delete
 
+from src.app.core.security import hash_password
 from src.app.database.models import (
     AccountModel,
     AssetModel,
@@ -14,7 +15,11 @@ from src.app.database.models import (
     HistoricalSnapshotModel,
     LiabilityModel,
     LiabilityPaymentModel,
+    NotificationModel,
+    OTPRequestModel,
+    SystemRole,
     TransactionModel,
+    UserModel,
 )
 from src.app.database.session import AsyncSessionFactory
 
@@ -32,7 +37,53 @@ async def seed_data():
         await db.execute(delete(AssetModel))
         await db.execute(delete(AccountModel))
         await db.execute(delete(FinancialGoalModel))
+        await db.execute(delete(NotificationModel))
+        await db.execute(delete(OTPRequestModel))
+        await db.execute(delete(UserModel))
         await db.commit()
+
+        print("Seeding Users & Roles (Email & Phone OTP)...")
+        default_password = hash_password("AdminPassword123!")
+        users = [
+            UserModel(
+                email="sysmanager@personal-fc.local",
+                phone_number="09121111111",
+                hashed_password=default_password,
+                full_name="مدیر ارشد سامانه (SysManager)",
+                role=SystemRole.SYSMANAGER.value,
+                is_active=True,
+                is_verified=True,
+            ),
+            UserModel(
+                email="admin@personal-fc.local",
+                phone_number="09122222222",
+                hashed_password=default_password,
+                full_name="مدیر مالی ارشد (Financial Admin)",
+                role=SystemRole.ADMIN.value,
+                is_active=True,
+                is_verified=True,
+            ),
+            UserModel(
+                email="user@personal-fc.local",
+                phone_number="09123333333",
+                hashed_password=default_password,
+                full_name="کاربر شخصی (Personal User)",
+                role=SystemRole.USER.value,
+                is_active=True,
+                is_verified=True,
+            ),
+            UserModel(
+                email="viewer@personal-fc.local",
+                phone_number="09124444444",
+                hashed_password=default_password,
+                full_name="ناظر و بازبین (Read-Only Viewer)",
+                role=SystemRole.VIEWER.value,
+                is_active=True,
+                is_verified=True,
+            ),
+        ]
+        db.add_all(users)
+        await db.flush()
 
         print("Seeding Accounts...")
         checking = AccountModel(
@@ -83,6 +134,7 @@ async def seed_data():
             ("NVDA", "NVIDIA Corporation", "equity", Decimal("124.8000")),
             ("BND", "Vanguard Total Bond Market ETF", "fixed_income", Decimal("73.1500")),
             ("GLD", "SPDR Gold Shares", "commodity", Decimal("242.8000")),
+            ("BRENT", "Brent Crude Oil", "commodity", Decimal("74.5000")),
             ("BTC", "Bitcoin", "crypto", Decimal("63400.0000")),
             ("ETH", "Ethereum", "crypto", Decimal("2650.0000")),
         ]
@@ -360,6 +412,39 @@ async def seed_data():
                 currency="USD",
             )
             db.add(snap)
+
+        print("Seeding Initial System Notifications & Market Alerts...")
+        now = datetime.now(UTC)
+        notifs = [
+            NotificationModel(
+                title="هشدار نوسان بازار: بیت‌کوین (BTC)",
+                message="قیمت بیت‌کوین با رشد ۷.۴٪ در ۲۴ ساعت گذشته به ۶۳,۴۰۰ دلار رسید. پیشنهاد می‌شود پورتفولیو را جهت بازتنظیم سود و کنترل ریسک ارزیابی فرمایید.",
+                notification_type="ASSET_VOLATILITY",
+                severity="warning",
+                data={"symbol": "BTC", "price": "63400.00", "change_percent": 7.4, "action": "rebalance"},
+                is_read=False,
+                created_at=now - timedelta(minutes=45),
+            ),
+            NotificationModel(
+                title="هشدار بازار انرژی: نفت خام برنت (BRENT)",
+                message="قیمت هر بشکه نفت برنت به ۷۴.۵۰ دلار تغییر یافت. تحلیل تاثیر آن بر دارایی‌های صندوق و تورم جهانی پیشنهاد می‌شود.",
+                notification_type="ASSET_VOLATILITY",
+                severity="info",
+                data={"symbol": "BRENT", "price": "74.50", "action": "analyze"},
+                is_read=False,
+                created_at=now - timedelta(hours=2),
+            ),
+            NotificationModel(
+                title="تحقق هدف مالی: صندوق ذخیره اضطراری",
+                message="تبریک! هدف مالی «صندوق ذخیره اضطراری ۶ ماهه» به بیش از ۷۲٪ تحقق رسید و در مسیر دستیابی کامل قرار دارد.",
+                notification_type="GOAL_REACHED",
+                severity="success",
+                data={"goal_name": "6-Month Emergency Reserve", "percent": 72.2},
+                is_read=True,
+                created_at=now - timedelta(days=1),
+            ),
+        ]
+        db.add_all(notifs)
 
         await db.commit()
         print("[SUCCESS] Realistic financial seed data successfully committed!")

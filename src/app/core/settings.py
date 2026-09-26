@@ -39,6 +39,29 @@ class Settings(BaseSettings):
     # Base financial defaults
     DEFAULT_BASE_CURRENCY: str = "USD"
 
+    # Communications & OTP (Supports Iranian SMS & Email Providers)
+    SMS_PROVIDER: str = "mock"  # mock, kavenegar, farazsms
+    KAVENEGAR_API_KEY: str = ""
+    KAVENEGAR_SENDER: str = ""
+    FARAZSMS_API_KEY: str = ""
+    FARAZSMS_SENDER: str = ""
+    FARAZSMS_PATTERN_CODE: str = ""
+
+    EMAIL_PROVIDER: str = "mock"  # mock, smtp
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "no-reply@personal-fc.local"
+    SMTP_USE_TLS: bool = True
+
+    OTP_EXPIRE_SECONDS: int = 120
+    OTP_COOLDOWN_SECONDS: int = 60
+    OTP_DIGITS: int = 5
+
+    # Asset Volatility Alert Threshold (%)
+    ASSET_ALERT_THRESHOLD_PERCENT: float = 4.0
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Optional
 
 from sqlalchemy import (
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Text,
@@ -279,3 +281,96 @@ class AuditEntryModel(Base, UUIDPrimaryKeyMixin):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True
     )
+
+
+class SystemRole(StrEnum):
+    SYSMANAGER = "sysmanager"
+    ADMIN = "admin"
+    USER = "user"
+    VIEWER = "viewer"
+
+
+class UserModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "users"
+
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(
+        String(30), unique=True, index=True, nullable=True
+    )
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    full_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(50), nullable=False, default=SystemRole.USER.value, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    job: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Financial Onboarding & Salary Benchmark Profile
+    monthly_income: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    liquid_assets: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    investment_assets: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    total_liabilities: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    financial_goals: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    has_completed_financial_onboarding: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    # Psychological Risk Profile & Portfolio Suggestion
+    risk_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_level: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    risk_answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    portfolio_suggestion: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    has_completed_risk_onboarding: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
+    notifications: Mapped[list["NotificationModel"]] = relationship(
+        "NotificationModel", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class OTPRequestModel(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "otp_requests"
+
+    identifier: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # sms, email
+    otp_code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(50), nullable=False, default="login")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True
+    )
+
+
+class NotificationModel(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "notifications"
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    notification_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True
+    )  # GOAL_REACHED, ASSET_VOLATILITY, PRICE_ALERT, SYSTEM
+    severity: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="info"
+    )  # info, warning, success, critical
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False, index=True
+    )
+
+    user: Mapped[Optional["UserModel"]] = relationship("UserModel", back_populates="notifications")
+
+

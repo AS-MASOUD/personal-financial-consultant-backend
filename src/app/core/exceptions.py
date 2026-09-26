@@ -56,3 +56,32 @@ class ExternalProviderException(AppException):
             status_code=502,
             details={"provider": provider, **(details or {})},
         )
+
+
+class AuthenticationException(AppException):
+    def __init__(
+        self,
+        message: str = "Invalid authentication credentials.",
+        details: dict[str, Any] | None = None,
+    ):
+        super().__init__(
+            message=message,
+            code="AUTHENTICATION_FAILED",
+            status_code=401,
+            details=details,
+        )
+
+
+class PermissionDeniedException(AppException):
+    def __init__(
+        self,
+        message: str = "Insufficient permissions to perform this action.",
+        details: dict[str, Any] | None = None,
+    ):
+        super().__init__(
+            message=message,
+            code="PERMISSION_DENIED",
+            status_code=403,
+            details=details,
+        )
+
