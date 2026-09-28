@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,11 +14,19 @@ from src.app.core.settings import get_settings
 from src.app.database.models import AuditEntryModel, SystemRole, UserModel
 from src.modules.auth.application.dtos import (
     ChangePasswordRequest,
+    FinancialOnboardingRequest,
+    FinancialOnboardingResponse,
+    JobBenchmarkResponse,
     LoginWithOTPRequest,
     LoginWithPasswordRequest,
     OTPResponse,
     ProfileUpdateRequest,
+    RegisterRequestOTP,
+    RegisterVerifyOTPRequest,
     RequestOTPRequest,
+    RiskAssessmentRequest,
+    RiskAssessmentResultResponse,
+    RiskOnboardingResponse,
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
@@ -32,7 +41,144 @@ class AuthService:
     def __init__(self):
         self.otp_service = OTPService()
 
+    async def request_register_otp(
+        self, db: AsyncSession, request: RegisterRequestOTP
+    ) -> OTPResponse:
+        clean_phone, _ = normalize_identifier(request.phone_number)
+        clean_email = request.email.strip().lower() if request.email else None
+
+        # Check existing user
+        conditions = [UserModel.phone_number == clean_phone]
+        if clean_email:
+            conditions.append(UserModel.email == clean_email)
+
+        stmt = select(UserModel).where(or_(*conditions))
+        res = await db.execute(stmt)
+        existing = res.scalar_one_or_none()
+        if existing is not None:
+            if existing.phone_number == clean_phone:
+                raise EntityConflictException(
+                    "کاربری با این شماره موبایل قبلاً در سامانه ثبت‌نام کرده است. لطفاً وارد شوید."
+                )
+            if clean_email and existing.email == clean_email:
+                raise EntityConflictException(
+                    "کاربری با این ایمیل قبلاً در سامانه ثبت‌نام کرده است. لطفاً وارد شوید."
+                )
+
+        data = await self.otp_service.request_otp(
+            db=db,
+            identifier=clean_phone,
+            purpose="register",
+        )
+        return OTPResponse(
+            identifier=str(data["identifier"]),
+            channel=str(data["channel"]),
+            expires_in=int(data["expires_in"] or 120),
+            cooldown_seconds=int(data["cooldown_seconds"] or 60),
+            debug_code=str(data["debug_code"]) if data.get("debug_code") else None,
+            message="کد یکبار مصرف با موفقیت به شماره موبایل شما ارسال شد.",
+        )
+
+    async def register_with_otp(
+        self, db: AsyncSession, request: RegisterVerifyOTPRequest
+    ) -> TokenResponse:
+        clean_phone, _ = normalize_identifier(request.phone_number)
+        clean_email = request.email.strip().lower() if request.email else None
+
+        # Verify OTP first
+        await self.otp_service.verify_otp(
+            db=db,
+            identifier=clean_phone,
+            code=request.code,
+            purpose="register",
+        )
+
+        # Check conflict
+        conditions = [UserModel.phone_number == clean_phone]
+        if clean_email:
+            conditions.append(UserModel.email == clean_email)
+
+        stmt_exist = select(UserModel).where(or_(*conditions))
+        res_exist = await db.execute(stmt_exist)
+        if res_exist.scalar_one_or_none() is not None:
+            raise EntityConflictException("کاربری با این مشخصات قبلاً در سامانه ثبت شده است.")
+
+        stmt_count = select(func.count(UserModel.id))
+        user_count = (await db.execute(stmt_count)).scalar() or 0
+        role = SystemRole.SYSMANAGER.value if user_count == 0 else SystemRole.USER.value
+
+        hashed = hash_password(request.password) if request.password else None
+        now = datetime.now(UTC)
+
+        user = UserModel(
+            email=clean_email,
+            phone_number=clean_phone,
+            hashed_password=hashed,
+            full_name=request.full_name,
+            role=role,
+            is_active=True,
+            is_verified=True,
+            last_login_at=now,
+            monthly_income=Decimal("0.0000"),
+            liquid_assets=Decimal("0.0000"),
+            investment_assets=Decimal("0.0000"),
+            total_liabilities=Decimal("0.0000"),
+            financial_goals=[],
+            has_completed_financial_onboarding=False,
+            risk_score=0,
+            risk_level=None,
+            risk_answers=None,
+            portfolio_suggestion=None,
+            has_completed_risk_onboarding=False,
+        )
+        db.add(user)
+        await db.flush()
+
+        audit = AuditEntryModel(
+            action="USER_REGISTER_OTP",
+            entity_type="USER",
+            entity_id=str(user.id),
+            details={
+                "email": user.email,
+                "phone_number": user.phone_number,
+                "role": user.role,
+                "is_first_user": user_count == 0,
+            },
+        )
+        db.add(audit)
+        await db.flush()
+
+        token_data = {
+            "sub": str(user.id),
+            "email": user.email or "",
+            "phone_number": user.phone_number or "",
+            "role": user.role,
+        }
+        access_token = create_access_token(token_data)
+
+        return TokenResponse(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=UserResponse.model_validate(user),
+        )
+
     async def register(self, db: AsyncSession, request: UserRegisterRequest) -> TokenResponse:
+        # If code is supplied, delegate to OTP registration
+        if request.code:
+            if not request.phone_number:
+                raise AppException("جهت ثبت‌نام با کد تایید، شماره موبایل الزامی است.", code="PHONE_REQUIRED", status_code=400)
+            return await self.register_with_otp(
+                db=db,
+                request=RegisterVerifyOTPRequest(
+                    full_name=request.full_name,
+                    phone_number=request.phone_number,
+                    email=request.email,
+                    password=request.password,
+                    code=request.code,
+                ),
+            )
+
         # Validate that at least email or phone_number is provided
         if not request.email and not request.phone_number:
             raise AppException("لطفاً حداقل ایمیل یا شماره موبایل را وارد نمایید.", code="MISSING_CONTACT", status_code=400)
@@ -72,6 +218,17 @@ class AuthService:
             is_active=True,
             is_verified=True,
             last_login_at=now,
+            monthly_income=Decimal("0.0000"),
+            liquid_assets=Decimal("0.0000"),
+            investment_assets=Decimal("0.0000"),
+            total_liabilities=Decimal("0.0000"),
+            financial_goals=[],
+            has_completed_financial_onboarding=False,
+            risk_score=0,
+            risk_level=None,
+            risk_answers=None,
+            portfolio_suggestion=None,
+            has_completed_risk_onboarding=False,
         )
         db.add(user)
         await db.flush()
@@ -345,3 +502,228 @@ class AuthService:
         await db.flush()
 
         return UserResponse.model_validate(user)
+
+    @staticmethod
+    def calculate_job_benchmark(job: str, user_salary: Decimal) -> JobBenchmarkResponse:
+        job_lower = (job or "").lower().strip()
+
+        benchmarks = {
+            "it_software": {
+                "title": "فناوری اطلاعات و مهندسی نرم‌افزار",
+                "keywords": ["نرم‌افزار", "برنامه‌نویس", "توسعه‌دهنده", "it", "web", "developer", "دولوپر", "پایتون", "react", "فرانت", "بک"],
+                "avg_toman": Decimal("65000000"),
+                "min_toman": Decimal("35000000"),
+                "max_toman": Decimal("110000000"),
+            },
+            "finance_accounting": {
+                "title": "امور مالی، حسابداری و تحلیل سرمایه‌گذاری",
+                "keywords": ["مالی", "حسابدار", "تحلیل‌گر", "سرمایه‌گذاری", "بورس", "بانک", "حسابرسی", "اقتصاد"],
+                "avg_toman": Decimal("48000000"),
+                "min_toman": Decimal("25000000"),
+                "max_toman": Decimal("85000000"),
+            },
+            "healthcare": {
+                "title": "پزشکی، داروسازی و سلامت",
+                "keywords": ["پزشک", "داروساز", "دندانپزشک", "درمان", "پرستار", "مطب", "کلینیک", "پزشکی"],
+                "avg_toman": Decimal("80000000"),
+                "min_toman": Decimal("40000000"),
+                "max_toman": Decimal("160000000"),
+            },
+            "engineering": {
+                "title": "مهندسی (عمران، برق، مکانیک، صنایع)",
+                "keywords": ["مهندس", "عمران", "مکانیک", "صنایع", "معمار", "کارخانه", "تولید", "پروژه"],
+                "avg_toman": Decimal("42000000"),
+                "min_toman": Decimal("25000000"),
+                "max_toman": Decimal("75000000"),
+            },
+            "marketing_sales": {
+                "title": "مارکتینگ، بازاریابی و فروش",
+                "keywords": ["مارکتینگ", "فروش", "بازاریاب", "دیجیتال مارکتینگ", "سئو", "ادمین", "تبلیغات", "تجارت الکترونیک"],
+                "avg_toman": Decimal("40000000"),
+                "min_toman": Decimal("22000000"),
+                "max_toman": Decimal("70000000"),
+            },
+            "business_retail": {
+                "title": "کسب‌وکار آزاد، اصناف و فروشگاه",
+                "keywords": ["آزاد", "کسب‌وکار", "فروشگاه", "مغازه", "تجارت", "بازرگان", "صاحب کار", "توزیع"],
+                "avg_toman": Decimal("55000000"),
+                "min_toman": Decimal("30000000"),
+                "max_toman": Decimal("120000000"),
+            },
+            "education_academic": {
+                "title": "آموزش، تدریس و پژوهش",
+                "keywords": ["معلم", "استاد", "مدرس", "آموزش", "دانشگاه", "پژوهشگر"],
+                "avg_toman": Decimal("30000000"),
+                "min_toman": Decimal("18000000"),
+                "max_toman": Decimal("55000000"),
+            },
+            "administrative_civil": {
+                "title": "اداری، دفتری و خدمات عمومی",
+                "keywords": ["کارمند", "اداری", "منشی", "دفتر", "دولتی", "پشتیبانی"],
+                "avg_toman": Decimal("26000000"),
+                "min_toman": Decimal("16000000"),
+                "max_toman": Decimal("40000000"),
+            },
+        }
+
+        matched_info = {
+            "title": "مشاغل تخصصی و آزاد",
+            "avg_toman": Decimal("45000000"),
+            "min_toman": Decimal("25000000"),
+            "max_toman": Decimal("85000000"),
+        }
+
+        for _, data in benchmarks.items():
+            if any(kw in job_lower for kw in data["keywords"]):
+                matched_info = data
+                break
+
+        avg_val = matched_info["avg_toman"]
+        min_val = matched_info["min_toman"]
+        max_val = matched_info["max_toman"]
+
+        if avg_val > Decimal("0"):
+            ratio = round(float((user_salary / avg_val) * Decimal("100")), 1)
+        else:
+            ratio = 100.0
+
+        if ratio > 120.0:
+            status_fa = "بالاتر از میانگین صنفی"
+            diff_pct = int(ratio - 100)
+            suggestion_fa = f"درآمد شما حدود {diff_pct}٪ بالاتر از میانگین این رده شغلی است. پیشنهاد می‌شود حداقل ۴۰ تا ۵۰ درصد از مازاد ماهانه را مستقیماً به سبد سرمایه‌گذاری مولد (سهام، طلا و رمزارز) هدایت فرمایید."
+        elif ratio >= 85.0:
+            status_fa = "در محدوده استاندارد صنفی"
+            suggestion_fa = "حقوق ماهانه شما در بازه نرمال این صنف قرار دارد. رعایت فرمول استاندارد ۵۰٪ نیازهای اساسی، ۳۰٪ خواسته‌ها و ۲۰٪ پس‌انداز منظم، امنیت مالی آینده شما را تامین می‌کند."
+        else:
+            status_fa = "پایین‌تر از میانگین صنفی"
+            diff_pct = int(100 - ratio)
+            suggestion_fa = f"حقوق فعلی شما حدود {diff_pct}٪ پایین‌تر از میانگین کشوری برای این تخصص است. ارتقاء مهارت‌های جانبی، پروژه‌های فریلنسری و مذاکره برای ارتقای شغلی توصیه می‌شود."
+
+        return JobBenchmarkResponse(
+            job_category=matched_info["title"],
+            average_salary_toman=avg_val,
+            min_salary_toman=min_val,
+            max_salary_toman=max_val,
+            user_salary_toman=user_salary,
+            comparison_ratio_percent=ratio,
+            status_fa=status_fa,
+            suggestion_fa=suggestion_fa,
+        )
+
+    @staticmethod
+    def calculate_risk_assessment(answers: dict[str, int]) -> RiskAssessmentResultResponse:
+        total_score = sum(int(v) for v in answers.values())
+
+        if total_score <= 45:
+            risk_level = "conservative"
+            risk_title = "محافظه‌کار (پوشش تورم و حفظ اصل سرمایه)"
+            desc = "اولویت اصلی شما حفظ ارزش دارایی‌ها و پرهیز از افت‌های شدید و استرس‌زای بازار است. خواب راحت شبانه برای شما مهم‌تر از بازدهی‌های هیجانی است."
+            allocation = {
+                "equities": 15.0,
+                "gold": 25.0,
+                "gold_commodity": 25.0,
+                "fixed_income": 45.0,
+                "crypto": 0.0,
+                "cash": 15.0,
+            }
+        elif total_score <= 75:
+            risk_level = "moderate"
+            risk_title = "متعادل (رشد متوازن با مهار نوسان)"
+            desc = "شما خواهان ترکیبی هوشمندانه از رشد ثروت و مهار ریسک هستید و نوسانات طبیعی بازار را به عنوان بخشی از مسیر سرمایه‌گذاری می‌پذیرید."
+            allocation = {
+                "equities": 35.0,
+                "gold": 20.0,
+                "gold_commodity": 20.0,
+                "fixed_income": 25.0,
+                "crypto": 5.0,
+                "cash": 15.0,
+            }
+        else:
+            risk_level = "aggressive"
+            risk_title = "جسور و ریسک‌پذیر (حداکثر رشد و ثروت‌آفرینی)"
+            desc = "شما با افق بلندمدت، افت‌های شدید بازار را فرصت طلایی خرید ارزان‌تر دانسته و به دنبال بازدهی‌های حداکثری و ثروت‌آفرینی شتابان هستید."
+            allocation = {
+                "equities": 50.0,
+                "gold": 15.0,
+                "gold_commodity": 15.0,
+                "fixed_income": 10.0,
+                "crypto": 15.0,
+                "cash": 10.0,
+            }
+
+        return RiskAssessmentResultResponse(
+            total_score=total_score,
+            risk_level=risk_level,
+            risk_title_fa=risk_title,
+            description_fa=desc,
+            portfolio_suggestion=allocation,
+        )
+
+    async def submit_financial_onboarding(
+        self, db: AsyncSession, user: UserModel, request: FinancialOnboardingRequest
+    ) -> FinancialOnboardingResponse:
+        user.job = request.job.strip()
+        user.monthly_income = request.monthly_income
+        user.liquid_assets = request.liquid_assets
+        user.investment_assets = request.investment_assets
+        user.total_liabilities = request.total_liabilities
+        user.financial_goals = request.financial_goals
+        user.has_completed_financial_onboarding = True
+
+        await db.flush()
+
+        benchmark = self.calculate_job_benchmark(request.job, request.monthly_income)
+
+        audit = AuditEntryModel(
+            action="USER_FINANCIAL_ONBOARDING",
+            entity_type="USER",
+            entity_id=str(user.id),
+            details={
+                "job": user.job,
+                "monthly_income": float(user.monthly_income),
+                "liquid_assets": float(user.liquid_assets),
+                "investment_assets": float(user.investment_assets),
+                "total_liabilities": float(user.total_liabilities),
+                "benchmark_category": benchmark.job_category,
+            },
+        )
+        db.add(audit)
+        await db.flush()
+
+        return FinancialOnboardingResponse(
+            user=UserResponse.model_validate(user),
+            benchmark=benchmark,
+            message="پرونده مالی و ارزیابی حقوق شغلی شما با موفقیت ثبت شد.",
+        )
+
+    async def submit_risk_onboarding(
+        self, db: AsyncSession, user: UserModel, request: RiskAssessmentRequest
+    ) -> RiskOnboardingResponse:
+        result = self.calculate_risk_assessment(request.answers)
+
+        user.risk_score = result.total_score
+        user.risk_level = result.risk_level
+        user.risk_answers = request.answers
+        user.portfolio_suggestion = result.portfolio_suggestion
+        user.has_completed_risk_onboarding = True
+
+        await db.flush()
+
+        audit = AuditEntryModel(
+            action="USER_RISK_ONBOARDING",
+            entity_type="USER",
+            entity_id=str(user.id),
+            details={
+                "risk_score": user.risk_score,
+                "risk_level": user.risk_level,
+                "portfolio_suggestion": user.portfolio_suggestion,
+            },
+        )
+        db.add(audit)
+        await db.flush()
+
+        return RiskOnboardingResponse(
+            user=UserResponse.model_validate(user),
+            risk_result=result,
+            message="سنجش روانشناسی ریسک‌پذیری و سبد پیشنهادی با موفقیت در پروفایل شما ثبت شد.",
+        )

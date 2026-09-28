@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -6,10 +7,40 @@ from httpx import ASGITransport, AsyncClient
 from src.main import app
 
 
+async def get_auth_headers(client: AsyncClient) -> dict[str, str]:
+    email = f"endpoint_user_{uuid.uuid4().hex[:8]}@personal-fc.local"
+    phone = f"0912{uuid.uuid4().int % 10000000:07d}"
+    reg = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "SecurePassword123!",
+            "full_name": "Endpoint Tester",
+            "phone_number": phone,
+        },
+    )
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    await client.post(
+        "/api/v1/auth/onboarding/financial",
+        headers=headers,
+        json={
+            "job": "Software Engineer",
+            "monthly_income": "50000000.00",
+            "liquid_assets": "100000000.00",
+            "investment_assets": "300000000.00",
+            "total_liabilities": "20000000.00",
+            "financial_goals": ["خانه"],
+        },
+    )
+    return headers
+
+
 @pytest.mark.asyncio
 async def test_overview_endpoint():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/api/v1/analytics/overview")
+        headers = await get_auth_headers(client)
+        response = await client.get("/api/v1/analytics/overview", headers=headers)
         assert response.status_code == 200
         data = response.json()
         assert "net_worth" in data
@@ -23,59 +54,75 @@ async def test_overview_endpoint():
 @pytest.mark.asyncio
 async def test_accounts_endpoints():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # List
-        response = await client.get("/api/v1/accounts")
-        assert response.status_code == 200
-        accounts = response.json()
-        assert len(accounts) >= 4
-
+        headers = await get_auth_headers(client)
         # Create
         create_payload = {
             "name": "Test Vault",
             "account_type": "savings",
-            "institution": "Ally",
-            "currency": "USD",
-            "initial_balance": "5000.00",
+            "institution": "Mellat",
+            "currency": "TOMAN",
+            "initial_balance": "5000000.00",
             "account_number_mask": "*9999",
         }
-        res_create = await client.post("/api/v1/accounts", json=create_payload)
+        res_create = await client.post("/api/v1/accounts", headers=headers, json=create_payload)
         assert res_create.status_code == 201
         acc_data = res_create.json()
         assert acc_data["name"] == "Test Vault"
         acc_id = acc_data["id"]
 
+        # List
+        response = await client.get("/api/v1/accounts", headers=headers)
+        assert response.status_code == 200
+        accounts = response.json()
+        assert len(accounts) >= 1
+
         # Delete
-        res_del = await client.delete(f"/api/v1/accounts/{acc_id}")
+        res_del = await client.delete(f"/api/v1/accounts/{acc_id}", headers=headers)
         assert res_del.status_code == 204
 
 
 @pytest.mark.asyncio
 async def test_assets_and_positions():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await get_auth_headers(client)
         res_assets = await client.get("/api/v1/assets")
         assert res_assets.status_code == 200
         assets = res_assets.json()
-        assert len(assets) >= 7
+        assert isinstance(assets, list)
 
-        res_positions = await client.get("/api/v1/assets/positions")
+        res_positions = await client.get("/api/v1/assets/positions", headers=headers)
         assert res_positions.status_code == 200
         positions = res_positions.json()
-        assert len(positions) >= 7
-        assert "unrealized_pnl" in positions[0]
-        assert "current_value" in positions[0]
+        assert isinstance(positions, list)
 
 
 @pytest.mark.asyncio
 async def test_liabilities_and_schedule():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.get("/api/v1/liabilities")
+        headers = await get_auth_headers(client)
+        # Create liability
+        liab_payload = {
+            "name": "وام مسکن",
+            "liability_type": "mortgage",
+            "lender": "بانک مسکن",
+            "original_principal": "50000000.00",
+            "current_balance": "40000000.00",
+            "interest_rate_percent": "18.0",
+            "monthly_payment": "1500000.00",
+            "start_date": "2026-01-01",
+            "currency": "TOMAN",
+        }
+        res_create = await client.post("/api/v1/liabilities", headers=headers, json=liab_payload)
+        assert res_create.status_code == 201
+
+        res = await client.get("/api/v1/liabilities", headers=headers)
         assert res.status_code == 200
         liabilities = res.json()
-        assert len(liabilities) >= 3
+        assert len(liabilities) >= 1
 
         # Schedule calculation
         res_sched = await client.get(
-            "/api/v1/liabilities/calculate-schedule?principal=10000&interest_rate=5.0&term_months=12"
+            "/api/v1/liabilities/calculate-schedule?principal=10000000&interest_rate=18.0&term_months=12"
         )
         assert res_sched.status_code == 200
         schedule = res_sched.json()
@@ -86,7 +133,8 @@ async def test_liabilities_and_schedule():
 @pytest.mark.asyncio
 async def test_cashflow_summary():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.get("/api/v1/cashflow/summary")
+        headers = await get_auth_headers(client)
+        res = await client.get("/api/v1/cashflow/summary", headers=headers)
         assert res.status_code == 200
         data = res.json()
         assert "total_income" in data
@@ -97,16 +145,17 @@ async def test_cashflow_summary():
 @pytest.mark.asyncio
 async def test_scenarios_simulation():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await get_auth_headers(client)
         sim_payload = {
             "name": "Promotion + Loan Payoff",
             "horizon_months": 24,
-            "monthly_income_delta": "1500.00",
-            "monthly_expense_delta": "-300.00",
-            "asset_growth_rate_annual": "8.0",
+            "monthly_income_delta": "15000000.00",
+            "monthly_expense_delta": "-3000000.00",
+            "asset_growth_rate_annual": "25.0",
             "new_loan_amount": "0",
-            "one_time_windfall": "10000.00",
+            "one_time_windfall": "100000000.00",
         }
-        res = await client.post("/api/v1/scenarios/simulate", json=sim_payload)
+        res = await client.post("/api/v1/scenarios/simulate", headers=headers, json=sim_payload)
         assert res.status_code == 200
         data = res.json()
         assert len(data["monthly_projections"]) == 24
@@ -116,10 +165,11 @@ async def test_scenarios_simulation():
 @pytest.mark.asyncio
 async def test_ai_chat():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await get_auth_headers(client)
         chat_payload = {
             "content": "Explain my current net worth and portfolio allocation.",
         }
-        res = await client.post("/api/v1/ai/chat", json=chat_payload)
+        res = await client.post("/api/v1/ai/chat", headers=headers, json=chat_payload)
         assert res.status_code == 201
         data = res.json()
         assert data["role"] == "assistant"

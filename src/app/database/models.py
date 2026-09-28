@@ -24,12 +24,18 @@ from src.app.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 class AccountModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "accounts"
 
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     account_type: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # checking, savings, brokerage, crypto, cash
     institution: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     current_balance: Mapped[Decimal] = mapped_column(
         Numeric(20, 4), nullable=False, default=Decimal("0.0000")
     )
@@ -52,7 +58,7 @@ class AssetModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     asset_class: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # equity, fixed_income, commodity, real_estate, crypto, cash
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     current_price: Mapped[Decimal] = mapped_column(
         Numeric(20, 4), nullable=False, default=Decimal("0.0000")
     )
@@ -109,7 +115,7 @@ class TransactionModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     unit_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     fee: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=Decimal("0.0000"))
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_reconciled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
@@ -120,6 +126,12 @@ class TransactionModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class LiabilityModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "liabilities"
 
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     liability_type: Mapped[str] = mapped_column(
         String(50), nullable=False
@@ -131,11 +143,12 @@ class LiabilityModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     monthly_payment: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     maturity_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
 
     payments: Mapped[list["LiabilityPaymentModel"]] = relationship(
         "LiabilityPaymentModel", back_populates="liability", cascade="all, delete-orphan"
     )
+    user: Mapped[Optional["UserModel"]] = relationship("UserModel")
 
 
 class LiabilityPaymentModel(Base, UUIDPrimaryKeyMixin):
@@ -192,7 +205,7 @@ class CashflowEntryModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     flow_type: Mapped[str] = mapped_column(String(20), nullable=False)  # income, expense
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     is_recurring: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -211,7 +224,7 @@ class FinancialGoalModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     current_amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4), nullable=False, default=Decimal("0.0000")
     )
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     target_date: Mapped[date] = mapped_column(Date, nullable=False)
     monthly_contribution: Mapped[Decimal] = mapped_column(
         Numeric(20, 4), nullable=False, default=Decimal("0.0000")
@@ -230,7 +243,7 @@ class HistoricalSnapshotModel(Base, UUIDPrimaryKeyMixin):
     total_liabilities: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     net_worth: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     liquid_assets: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )

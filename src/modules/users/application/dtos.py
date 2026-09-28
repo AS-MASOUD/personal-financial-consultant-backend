@@ -11,9 +11,17 @@ EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 class UserCreateRequest(BaseModel):
     email: str = Field(..., description="User email address")
     password: str = Field(..., min_length=6, max_length=128, description="Initial password")
-    full_name: str = Field(..., min_length=2, max_length=150, description="Full name")
+    full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
     role: SystemRole = Field(default=SystemRole.USER, description="System role to assign")
     is_active: bool = Field(default=True, description="Account active status")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        clean = v.strip()
+        if len(clean) < 2 or len(clean) > 50:
+            raise ValueError("نام و نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد.")
+        return clean
 
     @field_validator("email")
     @classmethod
@@ -33,11 +41,21 @@ class UserUpdateStatusRequest(BaseModel):
 
 
 class UserUpdateRequest(BaseModel):
-    full_name: str | None = Field(default=None, min_length=2, max_length=150)
+    full_name: str | None = Field(default=None, min_length=2, max_length=50)
     email: str | None = Field(default=None)
     role: SystemRole | None = Field(default=None)
     is_active: bool | None = Field(default=None)
     password: str | None = Field(default=None, min_length=6, max_length=128)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        clean = v.strip()
+        if len(clean) < 2 or len(clean) > 50:
+            raise ValueError("نام و نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد.")
+        return clean
 
     @field_validator("email")
     @classmethod

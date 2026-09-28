@@ -127,3 +127,238 @@ async def test_auth_register_and_change_password():
         assert profile_data["job"] == "تحلیل‌گر بازارهای مالی"
         assert profile_data["bio"] == "علاقه‌مند به اقتصاد کلان و سرمایه‌گذاری"
 
+
+@pytest.mark.asyncio
+async def test_onboarding_and_zero_baseline():
+    import uuid
+
+    unique_email = f"zero.test.{uuid.uuid4().hex[:8]}@personal-fc.local"
+    unique_phone = f"0912{uuid.uuid4().int % 10000000:07d}"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Register new regular user
+        reg_res = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": unique_email,
+                "password": "SecurePassword123!",
+                "full_name": "Zero Baseline User",
+                "phone_number": unique_phone,
+            },
+        )
+        assert reg_res.status_code == 201
+        token = reg_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. Check overview with new user token: must be zero baseline
+        ov_res = await client.get("/api/v1/analytics/overview", headers=headers)
+        assert ov_res.status_code == 200
+        ov_data = ov_res.json()
+        assert ov_data["net_worth"] == "0.0000"
+        assert ov_data["total_assets"] == "0.0000"
+        assert ov_data["liquid_cash"] == "0.0000"
+        assert ov_data["invested_capital"] == "0.0000"
+        assert len(ov_data["asset_allocation"]) == 0
+
+        # Check snapshots: must be empty for new user
+        snap_res = await client.get("/api/v1/analytics/snapshots?limit=10", headers=headers)
+        assert snap_res.status_code == 200
+        snaps = snap_res.json()
+        assert len(snaps) == 0
+
+        # 3. Test job benchmark query
+        bm_res = await client.get(
+            "/api/v1/auth/benchmark",
+            params={"job": "برنامه‌نویس و مهندس نرم‌افزار", "salary": 45000000},
+        )
+        assert bm_res.status_code == 200
+        bm_data = bm_res.json()
+        assert "average_salary_toman" in bm_data
+        assert bm_data["comparison_ratio_percent"] > 0
+
+        # 4. Submit financial onboarding
+        fin_payload = {
+            "job": "مهندس نرم‌افزار",
+            "monthly_income": 45000000,
+            "liquid_assets": 120000000,
+            "investment_assets": 350000000,
+            "total_liabilities": 50000000,
+            "financial_goals": ["خرید خانه", "استقلال مالی زودهنگام"],
+        }
+        fin_res = await client.post(
+            "/api/v1/auth/onboarding/financial", headers=headers, json=fin_payload
+        )
+        assert fin_res.status_code == 200
+        fin_data = fin_res.json()
+        assert fin_data["user"]["has_completed_financial_onboarding"] is True
+        assert len(fin_data["benchmark"]["suggestion_fa"]) > 0
+
+        # 5. Submit risk onboarding
+        risk_payload = {
+            "answers": {
+                "q1_drawdown_reaction": 20,
+                "q2_horizon": 20,
+                "q3_return_vs_safety": 20,
+                "q4_experience": 15,
+                "q5_income_stability": 20,
+            }
+        }
+        risk_res = await client.post(
+            "/api/v1/auth/onboarding/risk", headers=headers, json=risk_payload
+        )
+        assert risk_res.status_code == 200
+        risk_data = risk_res.json()
+        assert risk_data["user"]["has_completed_risk_onboarding"] is True
+        assert risk_data["risk_result"]["total_score"] == 95
+        assert risk_data["risk_result"]["risk_level"] == "aggressive"
+        assert "جسور" in risk_data["risk_result"]["risk_title_fa"]
+        assert risk_data["risk_result"]["portfolio_suggestion"]["equities"] == 50.0
+        assert risk_data["risk_result"]["portfolio_suggestion"]["gold"] == 15.0
+        assert risk_data["risk_result"]["portfolio_suggestion"]["crypto"] == 15.0
+
+        # Also test moderate risk calculation
+        mod_payload = {
+            "answers": {
+                "q1_drawdown_reaction": 15,
+                "q2_horizon": 15,
+                "q3_return_vs_safety": 15,
+                "q4_experience": 10,
+                "q5_income_stability": 15,
+            }
+        }
+        mod_res = await client.post(
+            "/api/v1/auth/onboarding/risk", headers=headers, json=mod_payload
+        )
+        assert mod_res.status_code == 200
+        mod_data = mod_res.json()
+        assert mod_data["risk_result"]["total_score"] == 70
+        assert mod_data["risk_result"]["risk_level"] == "moderate"
+        assert mod_data["risk_result"]["portfolio_suggestion"]["equities"] == 35.0
+        assert mod_data["risk_result"]["portfolio_suggestion"]["gold"] == 20.0
+        assert mod_data["risk_result"]["portfolio_suggestion"]["fixed_income"] == 25.0
+        assert mod_data["risk_result"]["portfolio_suggestion"]["crypto"] == 5.0
+        assert mod_data["risk_result"]["portfolio_suggestion"]["cash"] == 15.0
+
+        # 6. Verify overview is now personalized and reflects assets
+        new_ov = await client.get("/api/v1/analytics/overview", headers=headers)
+        assert new_ov.status_code == 200
+        new_ov_data = new_ov.json()
+        assert float(new_ov_data["liquid_cash"]) == 120000000.0
+        assert float(new_ov_data["invested_capital"]) == 350000000.0
+        assert float(new_ov_data["total_assets"]) == 470000000.0
+        assert float(new_ov_data["total_liabilities"]) == 50000000.0
+        assert float(new_ov_data["net_worth"]) == 420000000.0
+        assert len(new_ov_data["asset_allocation"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_auth_phone_and_name_validation():
+    import uuid
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Invalid phone number (doesn't start with 09)
+        res1 = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "phone_number": "08123456789",
+                "password": "Password123!",
+                "full_name": "تست کاربر",
+            },
+        )
+        assert res1.status_code == 422
+
+        # 2. Invalid phone number (length != 11)
+        res2 = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "phone_number": "091234567",
+                "password": "Password123!",
+                "full_name": "تست کاربر",
+            },
+        )
+        assert res2.status_code == 422
+
+        # 3. Invalid name (> 50 chars)
+        res3 = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "phone_number": "09129998877",
+                "password": "Password123!",
+                "full_name": "A" * 51,
+            },
+        )
+        assert res3.status_code == 422
+
+        # 4. Invalid name (< 2 chars)
+        res4 = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "phone_number": "09129998877",
+                "password": "Password123!",
+                "full_name": "A",
+            },
+        )
+        assert res4.status_code == 422
+
+        # 5. Valid phone and name registers successfully
+        unique_phone = f"0912{uuid.uuid4().int % 10000000:07d}"
+        res5 = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "phone_number": unique_phone,
+                "password": "Password123!",
+                "full_name": "کاربر تستی معتبر",
+            },
+        )
+        assert res5.status_code == 201
+        data = res5.json()
+        assert data["user"]["phone_number"] == unique_phone
+        assert data["user"]["full_name"] == "کاربر تستی معتبر"
+
+
+@pytest.mark.asyncio
+async def test_auth_register_otp_flow():
+    import uuid
+
+    unique_phone = f"0935{uuid.uuid4().int % 10000000:07d}"
+    reg_data = {
+        "full_name": "سارا محمدی",
+        "phone_number": unique_phone,
+        "password": "StrongPassword123!",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Request OTP for registration
+        otp_res = await client.post("/api/v1/auth/register/otp/request", json=reg_data)
+        assert otp_res.status_code == 200
+        otp_json = otp_res.json()
+        assert otp_json["identifier"] == unique_phone
+        assert otp_json["channel"] == "sms"
+        assert otp_json["debug_code"] is not None
+        debug_code = otp_json["debug_code"]
+
+        # 2. Try verifying with wrong code
+        fail_res = await client.post(
+            "/api/v1/auth/register/otp/verify",
+            json={**reg_data, "code": "000000"},
+        )
+        assert fail_res.status_code == 401
+
+        # 3. Verify with correct code -> account created and JWT returned
+        success_res = await client.post(
+            "/api/v1/auth/register/otp/verify",
+            json={**reg_data, "code": debug_code},
+        )
+        assert success_res.status_code == 201
+        res_json = success_res.json()
+        assert "access_token" in res_json
+        assert res_json["user"]["phone_number"] == unique_phone
+        assert res_json["user"]["full_name"] == "سارا محمدی"
+        assert res_json["user"]["is_verified"] is True
+
+        # 4. Requesting OTP again for now-existing user returns 409 Conflict
+        dup_otp_res = await client.post("/api/v1/auth/register/otp/request", json=reg_data)
+        assert dup_otp_res.status_code == 409
+
+
+
+

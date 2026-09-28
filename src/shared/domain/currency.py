@@ -14,4 +14,4 @@ class Currency(StrEnum):
 
     @classmethod
     def default(cls) -> "Currency":
-        return cls.USD
+        return cls.TOMAN

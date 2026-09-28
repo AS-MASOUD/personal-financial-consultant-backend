@@ -87,6 +87,7 @@ async def seed_data():
 
         print("Seeding Accounts...")
         checking = AccountModel(
+            user_id=users[1].id,  # admin user owns the demo accounts
             name="Primary Checking",
             account_type="checking",
             institution="Chase Bank",
@@ -96,6 +97,7 @@ async def seed_data():
             is_active=True,
         )
         savings = AccountModel(
+            user_id=users[1].id,
             name="High Yield Savings",
             account_type="savings",
             institution="Marcus by Goldman Sachs",
@@ -105,6 +107,7 @@ async def seed_data():
             is_active=True,
         )
         brokerage = AccountModel(
+            user_id=users[1].id,
             name="Taxable Investment Portfolio",
             account_type="brokerage",
             institution="Fidelity",
@@ -114,6 +117,7 @@ async def seed_data():
             is_active=True,
         )
         crypto_wallet = AccountModel(
+            user_id=users[1].id,
             name="Hardware Vault",
             account_type="crypto",
             institution="Coldcard Ledger",

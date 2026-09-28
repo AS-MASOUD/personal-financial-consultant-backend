@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.app.core.exceptions import EntityConflictException, EntityNotFoundException
-from src.app.database.models import AssetModel, AssetPositionModel
+from src.app.database.models import AccountModel, AssetModel, AssetPositionModel
 from src.modules.assets.application.dtos import AssetCreate, AssetPositionResponse, AssetUpdate
 
 
@@ -70,9 +70,14 @@ class AssetService:
         await self.db.flush()
 
     async def list_positions(
-        self, account_id: uuid.UUID | None = None
+        self, user_id: uuid.UUID, account_id: uuid.UUID | None = None
     ) -> list[AssetPositionResponse]:
-        stmt = select(AssetPositionModel).options(selectinload(AssetPositionModel.asset))
+        stmt = (
+            select(AssetPositionModel)
+            .join(AccountModel, AssetPositionModel.account_id == AccountModel.id)
+            .options(selectinload(AssetPositionModel.asset))
+            .where(AccountModel.user_id == user_id)
+        )
         if account_id:
             stmt = stmt.where(AssetPositionModel.account_id == account_id)
         result = await self.db.execute(stmt)
@@ -116,3 +121,4 @@ class AssetService:
                 )
             )
         return computed_positions
+

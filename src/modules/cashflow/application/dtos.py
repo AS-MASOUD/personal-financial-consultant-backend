@@ -32,7 +32,7 @@ class CashflowEntryCreate(BaseModel):
     category_id: uuid.UUID
     flow_type: str = Field(..., description="income, expense")
     amount: Decimal = Field(..., gt=0)
-    currency: Currency = Field(default=Currency.USD)
+    currency: Currency = Field(default=Currency.TOMAN)
     entry_date: date
     description: str = Field(..., min_length=1, max_length=255)
     is_recurring: bool = False

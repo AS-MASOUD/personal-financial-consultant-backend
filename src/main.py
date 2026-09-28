@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +13,7 @@ from src.app.core.settings import get_settings
 from src.app.middleware.request_id import RequestIDMiddleware
 from src.app.observability.health import health_router
 from src.app.observability.logging import configure_logging, get_logger
+from src.modules.assets.infrastructure.scheduler import market_scheduler
 
 settings = get_settings()
 configure_logging(environment=settings.ENVIRONMENT, log_level=settings.LOG_LEVEL)
@@ -26,8 +28,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         environment=settings.ENVIRONMENT,
         debug=settings.DEBUG,
     )
-    yield
-    logger.info("Application shutdown")
+    # Start periodic market price background task (~5 times a day, avoids per-user API limits)
+    await market_scheduler.start()
+    try:
+        yield
+    finally:
+        await market_scheduler.stop()
+        logger.info("Application shutdown")
 
 
 def create_application() -> FastAPI:
@@ -76,14 +83,15 @@ def create_application() -> FastAPI:
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        logger.warning("Request validation failed", errors=exc.errors())
+        errors = jsonable_encoder(exc.errors())
+        logger.warning("Request validation failed", errors=errors)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "The submitted payload is invalid.",
-                    "details": exc.errors(),
+                    "details": errors,
                 }
             },
         )

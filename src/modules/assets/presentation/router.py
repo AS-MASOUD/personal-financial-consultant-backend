@@ -3,20 +3,47 @@ import uuid
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.app.database.models import UserModel
 from src.app.database.session import get_db_session
 from src.modules.assets.application.dtos import (
     AssetCreate,
     AssetPositionResponse,
     AssetResponse,
     AssetUpdate,
+    MarketRatesResponse,
+    MarketSyncResultResponse,
 )
+from src.modules.assets.application.market_sync_service import MarketSyncService
 from src.modules.assets.application.services import AssetService
+from src.modules.assets.infrastructure.scheduler import market_scheduler
+from src.modules.auth.presentation.dependencies import get_current_user
 
 assets_router = APIRouter(prefix="/assets", tags=["Assets"])
+market_sync_service = MarketSyncService()
 
 
 def get_asset_service(db: AsyncSession = Depends(get_db_session)) -> AssetService:
     return AssetService(db)
+
+
+@assets_router.get("/market/rates", response_model=MarketRatesResponse)
+async def get_market_rates(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: UserModel = Depends(get_current_user),
+) -> MarketRatesResponse:
+    """Retrieve the latest synchronized market rates for commodities, gold, currency, and crypto.
+
+    Served from fast cache updated periodically ~5 times a day by background task.
+    """
+    return await market_sync_service.get_market_rates(db=db)
+
+
+@assets_router.post("/market/sync", response_model=MarketSyncResultResponse)
+async def trigger_market_sync(
+    current_user: UserModel = Depends(get_current_user),
+) -> MarketSyncResultResponse:
+    """Manually trigger background synchronization of commodity, gold, forex, and crypto rates."""
+    return await market_scheduler.trigger_manual_sync()
 
 
 @assets_router.get("", response_model=list[AssetResponse])
@@ -32,8 +59,9 @@ async def list_assets(
 async def list_positions(
     account_id: uuid.UUID | None = None,
     service: AssetService = Depends(get_asset_service),
+    current_user: UserModel = Depends(get_current_user),
 ) -> list[AssetPositionResponse]:
-    return await service.list_positions(account_id=account_id)
+    return await service.list_positions(user_id=current_user.id, account_id=account_id)
 
 
 @assets_router.get("/{asset_id}", response_model=AssetResponse)

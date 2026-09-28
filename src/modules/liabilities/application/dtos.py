@@ -17,7 +17,7 @@ class LiabilityBase(BaseModel):
     monthly_payment: Decimal = Field(..., ge=0)
     start_date: date
     maturity_date: date | None = None
-    currency: Currency = Field(default=Currency.USD)
+    currency: Currency = Field(default=Currency.TOMAN)
 
 
 class LiabilityCreate(LiabilityBase):

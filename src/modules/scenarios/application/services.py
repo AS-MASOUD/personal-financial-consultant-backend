@@ -2,6 +2,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.app.database.models import UserModel
 from src.modules.analytics.application.services import AnalyticsService
 from src.modules.liabilities.application.services import LiabilityService
 from src.modules.scenarios.application.dtos import (
@@ -16,10 +17,10 @@ class ScenarioService:
         self.db = db
 
     async def run_simulation(
-        self, request: ScenarioSimulationRequest
+        self, request: ScenarioSimulationRequest, current_user: UserModel
     ) -> ScenarioSimulationResponse:
         analytics = AnalyticsService(self.db)
-        overview = await analytics.get_overview()
+        overview = await analytics.get_overview(current_user=current_user)
 
         baseline_net_worth = overview.net_worth
         baseline_liquid = overview.liquid_cash

@@ -5,7 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.core.exceptions import EntityNotFoundException, FinancialCalculationException
-from src.app.database.models import AccountModel, AssetModel, AssetPositionModel, TransactionModel
+from src.app.database.models import (
+    AccountModel,
+    AssetModel,
+    AssetPositionModel,
+    TransactionModel,
+    UserModel,
+)
 from src.modules.transactions.application.dtos import TransactionCreate
 
 
@@ -15,12 +21,17 @@ class TransactionService:
 
     async def list_transactions(
         self,
+        current_user: UserModel,
         account_id: uuid.UUID | None = None,
         asset_id: uuid.UUID | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[TransactionModel]:
-        stmt = select(TransactionModel)
+        stmt = (
+            select(TransactionModel)
+            .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+            .where(AccountModel.user_id == current_user.id)
+        )
         if account_id:
             stmt = stmt.where(TransactionModel.account_id == account_id)
         if asset_id:
@@ -29,9 +40,14 @@ class TransactionService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def create_transaction(self, payload: TransactionCreate) -> TransactionModel:
-        # Validate account exists
-        stmt = select(AccountModel).where(AccountModel.id == payload.account_id)
+    async def create_transaction(
+        self, payload: TransactionCreate, current_user: UserModel
+    ) -> TransactionModel:
+        # Validate account exists and belongs to current user
+        stmt = select(AccountModel).where(
+            AccountModel.id == payload.account_id,
+            AccountModel.user_id == current_user.id,
+        )
         result = await self.db.execute(stmt)
         account = result.scalar_one_or_none()
         if not account:

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.core.exceptions import EntityNotFoundException, FinancialCalculationException
-from src.app.database.models import LiabilityModel, LiabilityPaymentModel
+from src.app.database.models import LiabilityModel, LiabilityPaymentModel, UserModel
 from src.modules.liabilities.application.dtos import (
     LiabilityCreate,
     LiabilityPaymentCreate,
@@ -18,8 +18,12 @@ class LiabilityService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def list_liabilities(self) -> list[LiabilityResponse]:
-        stmt = select(LiabilityModel).order_by(LiabilityModel.current_balance.desc())
+    async def list_liabilities(self, current_user: UserModel) -> list[LiabilityResponse]:
+        stmt = (
+            select(LiabilityModel)
+            .where(LiabilityModel.user_id == current_user.id)
+            .order_by(LiabilityModel.current_balance.desc())
+        )
         result = await self.db.execute(stmt)
         liabilities = result.scalars().all()
 
@@ -52,13 +56,14 @@ class LiabilityService:
             )
         return responses
 
-    async def create_liability(self, payload: LiabilityCreate) -> LiabilityModel:
+    async def create_liability(self, payload: LiabilityCreate, current_user: UserModel) -> LiabilityModel:
         curr_balance = (
             payload.current_balance
             if payload.current_balance is not None
             else payload.original_principal
         )
         liability = LiabilityModel(
+            user_id=current_user.id,
             name=payload.name,
             liability_type=payload.liability_type,
             lender=payload.lender,
@@ -75,8 +80,13 @@ class LiabilityService:
         await self.db.refresh(liability)
         return liability
 
-    async def record_payment(self, payload: LiabilityPaymentCreate) -> LiabilityPaymentModel:
-        stmt = select(LiabilityModel).where(LiabilityModel.id == payload.liability_id)
+    async def record_payment(
+        self, payload: LiabilityPaymentCreate, current_user: UserModel
+    ) -> LiabilityPaymentModel:
+        stmt = select(LiabilityModel).where(
+            LiabilityModel.id == payload.liability_id,
+            LiabilityModel.user_id == current_user.id,
+        )
         result = await self.db.execute(stmt)
         liability = result.scalar_one_or_none()
         if not liability:

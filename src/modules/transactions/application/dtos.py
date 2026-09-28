@@ -18,7 +18,7 @@ class TransactionCreate(BaseModel):
     unit_price: Decimal | None = Field(None, ge=0)
     total_amount: Decimal = Field(..., ge=0)
     fee: Decimal = Field(default=Decimal("0.0000"), ge=0)
-    currency: Currency = Field(default=Currency.USD)
+    currency: Currency = Field(default=Currency.TOMAN)
     notes: str | None = None
 
 

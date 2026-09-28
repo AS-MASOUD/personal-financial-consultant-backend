@@ -26,11 +26,11 @@ async def get_notifications(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     unread_only: bool = Query(False),
-    current_user: UserModel | None = Depends(get_optional_current_user),
+    current_user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> NotificationListResponse:
     """Retrieve notifications, financial milestone alerts, and asset volatility warnings."""
-    user_id = current_user.id if current_user else None
+    user_id = current_user.id
     return await notification_service.list_notifications(
         db=db,
         user_id=user_id,

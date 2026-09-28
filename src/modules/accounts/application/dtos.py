@@ -13,7 +13,7 @@ class AccountBase(BaseModel):
         ..., description="checking, savings, brokerage, crypto, cash, retirement"
     )
     institution: str | None = Field(None, max_length=100)
-    currency: Currency = Field(default=Currency.USD)
+    currency: Currency = Field(default=Currency.TOMAN)
     account_number_mask: str | None = Field(None, max_length=20)
 
 

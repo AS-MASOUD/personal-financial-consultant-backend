@@ -31,13 +31,19 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     # Market Data & AI
-    MARKET_DATA_PROVIDER: str = "mock"
+    MARKET_DATA_PROVIDER: str = "brs"  # brs, mock
+    BRS_API_KEY: str = "BM42nXyL78h5NrpdMrEPaXDGLCYfgJMQ"
+    BRS_COMMODITY_URL: str = "https://api.brsapi.ir/Market/Commodity.php"
+    BRS_CRYPTO_URL: str = "https://api.brsapi.ir/Market/Cryptocurrency.php"
+    BRS_GOLD_CURRENCY_URL: str = "https://api.brsapi.ir/Market/Gold_Currency.php"
+    MARKET_SYNC_INTERVAL_HOURS: float = 4.8  # 5 times a day (24 / 5 = 4.8 hours = 17,280 seconds)
+    ENABLE_MARKET_SYNC_TASK: bool = True
     AI_PROVIDER: str = "mock"
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
 
     # Base financial defaults
-    DEFAULT_BASE_CURRENCY: str = "USD"
+    DEFAULT_BASE_CURRENCY: str = "TOMAN"
 
     # Communications & OTP (Supports Iranian SMS & Email Providers)
     SMS_PROVIDER: str = "mock"  # mock, kavenegar, farazsms

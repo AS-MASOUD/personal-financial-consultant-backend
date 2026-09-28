@@ -13,7 +13,7 @@ class AssetBase(BaseModel):
     asset_class: str = Field(
         ..., description="equity, fixed_income, commodity, real_estate, crypto, cash"
     )
-    currency: Currency = Field(default=Currency.USD)
+    currency: Currency = Field(default=Currency.TOMAN)
     notes: str | None = None
 
 
@@ -54,3 +54,34 @@ class AssetPositionResponse(BaseModel):
     asset_name: str
     asset_class: str
     currency: str
+
+
+class MarketQuoteDTO(BaseModel):
+    symbol: str
+    name: str
+    name_en: str | None = None
+    category: str  # gold_coin, commodity, currency, crypto
+    price: Decimal
+    unit: str  # تومان, دلار
+    change_percent: float | None = None
+    price_toman: Decimal | None = None
+    updated_at: datetime | None = None
+
+
+class MarketRatesResponse(BaseModel):
+    gold_and_coins: list[MarketQuoteDTO]
+    commodities: list[MarketQuoteDTO]
+    currencies: list[MarketQuoteDTO]
+    cryptocurrency: list[MarketQuoteDTO]
+    usd_toman_rate: Decimal | None = None
+    last_sync_time: datetime | None = None
+    sync_source: str = "BRS API"
+
+
+class MarketSyncResultResponse(BaseModel):
+    success: bool
+    message: str
+    updated_assets_count: int
+    total_quotes_fetched: int
+    last_sync_time: datetime
+

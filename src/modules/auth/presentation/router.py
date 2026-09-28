@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,10 +9,17 @@ from src.app.database.models import UserModel
 from src.app.database.session import get_db_session
 from src.modules.auth.application.dtos import (
     ChangePasswordRequest,
+    FinancialOnboardingRequest,
+    FinancialOnboardingResponse,
+    JobBenchmarkResponse,
     LoginWithOTPRequest,
     OTPResponse,
     ProfileUpdateRequest,
+    RegisterRequestOTP,
+    RegisterVerifyOTPRequest,
     RequestOTPRequest,
+    RiskAssessmentRequest,
+    RiskOnboardingResponse,
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
@@ -36,6 +45,34 @@ async def register(
 ) -> TokenResponse:
     """Register a new user. If no users currently exist, the first user is granted 'sysmanager' role."""
     return await auth_service.register(db=db, request=request)
+
+
+@auth_router.post(
+    "/register/otp/request",
+    response_model=OTPResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request OTP verification code for new user registration",
+)
+async def request_register_otp(
+    request: RegisterRequestOTP,
+    db: AsyncSession = Depends(get_db_session),
+) -> OTPResponse:
+    """Validate user registration data and send OTP code to mobile phone."""
+    return await auth_service.request_register_otp(db=db, request=request)
+
+
+@auth_router.post(
+    "/register/otp/verify",
+    response_model=TokenResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Verify OTP code and create new registered user",
+)
+async def verify_register_otp(
+    request: RegisterVerifyOTPRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> TokenResponse:
+    """Verify received OTP code and finalize user registration."""
+    return await auth_service.register_with_otp(db=db, request=request)
 
 
 @auth_router.post(
@@ -106,6 +143,50 @@ async def update_me(
 ) -> UserResponse:
     """Update profile details (name, email, phone, age, job, bio) of current logged-in user."""
     return await auth_service.update_profile(db=db, user=current_user, request=request)
+
+
+@auth_router.post(
+    "/onboarding/financial",
+    response_model=FinancialOnboardingResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Submit user financial onboarding information and receive job salary benchmark",
+)
+async def submit_financial_onboarding(
+    request: FinancialOnboardingRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> FinancialOnboardingResponse:
+    """Save user financial figures (income, assets, debt, goals) and calculate job salary benchmark."""
+    return await auth_service.submit_financial_onboarding(db=db, user=current_user, request=request)
+
+
+@auth_router.get(
+    "/benchmark",
+    response_model=JobBenchmarkResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Calculate industry salary benchmark for a job",
+)
+async def get_job_benchmark(
+    job: str,
+    salary: Decimal,
+) -> JobBenchmarkResponse:
+    """Query average salary, bounds, and recommendations for a specific job title."""
+    return auth_service.calculate_job_benchmark(job=job, user_salary=salary)
+
+
+@auth_router.post(
+    "/onboarding/risk",
+    response_model=RiskOnboardingResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Submit psychological risk assessment answers and receive portfolio allocation suggestion",
+)
+async def submit_risk_onboarding(
+    request: RiskAssessmentRequest,
+    current_user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> RiskOnboardingResponse:
+    """Evaluate financial psychological questions, compute risk score and portfolio allocation suggestion."""
+    return await auth_service.submit_risk_onboarding(db=db, user=current_user, request=request)
 
 
 @auth_router.post(

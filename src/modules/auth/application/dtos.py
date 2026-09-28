@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -9,10 +10,31 @@ IRAN_PHONE_REGEX = re.compile(r"^09\d{9}$")
 
 
 class UserRegisterRequest(BaseModel):
-    full_name: str = Field(..., min_length=2, max_length=150, description="Full name")
+    full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
     email: str | None = Field(default=None, description="User email address")
     phone_number: str | None = Field(default=None, description="Iranian mobile number (e.g. 09123456789)")
     password: str | None = Field(default=None, min_length=6, max_length=128, description="User password")
+    code: str | None = Field(default=None, min_length=4, max_length=8, description="Optional OTP code")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        clean = v.strip()
+        if len(clean) < 2 or len(clean) > 50:
+            raise ValueError("نام و نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد.")
+        return clean
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        clean = v.strip()
+        if not clean:
+            return None
+        if not IRAN_PHONE_REGEX.match(clean):
+            raise ValueError("شماره موبایل نامعتبر است. شماره باید با 09 شروع شده و دارای ۱۱ رقم باشد.")
+        return clean
 
     @field_validator("email")
     @classmethod
@@ -21,7 +43,78 @@ class UserRegisterRequest(BaseModel):
             return None
         clean = v.strip().lower()
         if not EMAIL_REGEX.match(clean):
-            raise ValueError("Invalid email format")
+            raise ValueError("قالب آدرس ایمیل نامعتبر است.")
+        return clean
+
+
+class RegisterRequestOTP(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
+    phone_number: str = Field(..., description="Iranian mobile number (e.g. 09123456789)")
+    email: str | None = Field(default=None, description="User email address")
+    password: str | None = Field(default=None, min_length=6, max_length=128, description="User password")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        clean = v.strip()
+        if len(clean) < 2 or len(clean) > 50:
+            raise ValueError("نام و نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد.")
+        return clean
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: str) -> str:
+        clean = v.strip()
+        if not IRAN_PHONE_REGEX.match(clean):
+            raise ValueError("شماره موبایل نامعتبر است. شماره باید با 09 شروع شده و دارای ۱۱ رقم باشد.")
+        return clean
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        clean = v.strip().lower()
+        if not clean:
+            return None
+        if not EMAIL_REGEX.match(clean):
+            raise ValueError("قالب آدرس ایمیل نامعتبر است.")
+        return clean
+
+
+class RegisterVerifyOTPRequest(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
+    phone_number: str = Field(..., description="Iranian mobile number (e.g. 09123456789)")
+    email: str | None = Field(default=None, description="User email address")
+    password: str | None = Field(default=None, min_length=6, max_length=128, description="User password")
+    code: str = Field(..., min_length=4, max_length=8, description="OTP code received")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        clean = v.strip()
+        if len(clean) < 2 or len(clean) > 50:
+            raise ValueError("نام و نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد.")
+        return clean
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: str) -> str:
+        clean = v.strip()
+        if not IRAN_PHONE_REGEX.match(clean):
+            raise ValueError("شماره موبایل نامعتبر است. شماره باید با 09 شروع شده و دارای ۱۱ رقم باشد.")
+        return clean
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        clean = v.strip().lower()
+        if not clean:
+            return None
+        if not EMAIL_REGEX.match(clean):
+            raise ValueError("قالب آدرس ایمیل نامعتبر است.")
         return clean
 
 
@@ -66,19 +159,96 @@ class UserResponse(BaseModel):
     age: int | None = None
     job: str | None = None
     bio: str | None = None
+    monthly_income: Decimal | None = None
+    liquid_assets: Decimal | None = None
+    investment_assets: Decimal | None = None
+    total_liabilities: Decimal | None = None
+    financial_goals: list[str] | list[dict] | None = None
+    has_completed_financial_onboarding: bool = False
+    risk_score: int | None = None
+    risk_level: str | None = None
+    risk_answers: dict | None = None
+    portfolio_suggestion: dict | None = None
+    has_completed_risk_onboarding: bool = False
     is_active: bool
     is_verified: bool
     created_at: datetime
     last_login_at: datetime | None = None
 
 
+class JobBenchmarkResponse(BaseModel):
+    job_category: str
+    average_salary_toman: Decimal
+    min_salary_toman: Decimal
+    max_salary_toman: Decimal
+    user_salary_toman: Decimal
+    comparison_ratio_percent: float
+    status_fa: str
+    suggestion_fa: str
+
+
+class FinancialOnboardingRequest(BaseModel):
+    job: str = Field(..., min_length=2, max_length=100)
+    monthly_income: Decimal = Field(..., ge=0)
+    liquid_assets: Decimal = Field(default=Decimal("0"), ge=0)
+    investment_assets: Decimal = Field(default=Decimal("0"), ge=0)
+    total_liabilities: Decimal = Field(default=Decimal("0"), ge=0)
+    financial_goals: list[str] = Field(default_factory=list)
+
+
+class FinancialOnboardingResponse(BaseModel):
+    user: UserResponse
+    benchmark: JobBenchmarkResponse
+    message: str = "اطلاعات مالی و اهداف شما با موفقیت ثبت شد."
+
+
+class RiskAssessmentRequest(BaseModel):
+    answers: dict[str, int] = Field(..., description="Mapping of question index or key to chosen point (1-4)")
+
+
+class RiskAssessmentResultResponse(BaseModel):
+    total_score: int
+    risk_level: str
+    risk_title_fa: str
+    description_fa: str
+    portfolio_suggestion: dict[str, float]
+
+
+class RiskOnboardingResponse(BaseModel):
+    user: UserResponse
+    risk_result: RiskAssessmentResultResponse
+    message: str = "آزمون روانشناسی ریسک‌پذیری با موفقیت ثبت شد."
+
+
 class ProfileUpdateRequest(BaseModel):
-    full_name: str | None = Field(default=None, min_length=2, max_length=150)
+    full_name: str | None = Field(default=None, min_length=2, max_length=50)
     email: str | None = Field(default=None)
     phone_number: str | None = Field(default=None)
     age: int | None = Field(default=None, ge=10, le=120)
     job: str | None = Field(default=None, max_length=100)
     bio: str | None = Field(default=None, max_length=500)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        clean = v.strip()
+        if not clean:
+            return None
+        if len(clean) < 2 or len(clean) > 50:
+            raise ValueError("نام و نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد.")
+        return clean
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: str | None) -> str | None:
+        if not v or not v.strip():
+            return None
+        clean = v.strip()
+        if not IRAN_PHONE_REGEX.match(clean):
+            raise ValueError("شماره موبایل نامعتبر است. شماره باید با 09 شروع شده و دارای ۱۱ رقم باشد.")
+        return clean
 
     @field_validator("email")
     @classmethod

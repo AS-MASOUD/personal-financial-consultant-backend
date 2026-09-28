@@ -116,24 +116,24 @@ async def test_otp_flow_phone_and_email():
 @pytest.mark.asyncio
 async def test_notifications_and_volatility_triggers():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # 1. Fetch notifications
-        res = await client.get("/api/v1/notifications")
-        assert res.status_code == 200
-        data = res.json()
-        assert "items" in data
-        assert "unread_count" in data
-        assert len(data["items"]) >= 2
-
-        first_notif = data["items"][0]
-        notif_id = first_notif["id"]
-
-        # 2. Login to get token for marking read
+        # 1. Login to get token
         login_res = await client.post(
             "/api/v1/auth/login",
             json={"identifier": "sysmanager@personal-fc.local", "password": "AdminPassword123!"},
         )
         token = login_res.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. Fetch notifications
+        res = await client.get("/api/v1/notifications", headers=headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert "items" in data
+        assert "unread_count" in data
+        assert len(data["items"]) >= 1
+
+        first_notif = data["items"][0]
+        notif_id = first_notif["id"]
 
         # 3. Mark single notification as read
         read_res = await client.patch(f"/api/v1/notifications/{notif_id}/read", headers=headers)

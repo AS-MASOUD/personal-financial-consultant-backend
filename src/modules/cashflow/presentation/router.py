@@ -4,7 +4,9 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.app.database.models import UserModel
 from src.app.database.session import get_db_session
+from src.modules.auth.presentation.dependencies import get_current_user
 from src.modules.cashflow.application.dtos import (
     CashflowEntryCreate,
     CashflowEntryResponse,
@@ -48,9 +50,11 @@ async def list_entries(
     category_id: uuid.UUID | None = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    current_user: UserModel = Depends(get_current_user),
     service: CashflowService = Depends(get_cashflow_service),
 ) -> list[CashflowEntryResponse]:
     return await service.list_entries(
+        current_user=current_user,
         start_date=start_date,
         end_date=end_date,
         category_id=category_id,
@@ -62,15 +66,21 @@ async def list_entries(
 @cashflow_router.post("/entries", status_code=status.HTTP_201_CREATED)
 async def create_entry(
     payload: CashflowEntryCreate,
+    current_user: UserModel = Depends(get_current_user),
     service: CashflowService = Depends(get_cashflow_service),
 ):
-    return await service.create_entry(payload)
+    return await service.create_entry(payload, current_user=current_user)
 
 
 @cashflow_router.get("/summary", response_model=CashflowSummary)
 async def get_summary(
     start_date: date | None = None,
     end_date: date | None = None,
+    current_user: UserModel = Depends(get_current_user),
     service: CashflowService = Depends(get_cashflow_service),
 ) -> CashflowSummary:
-    return await service.get_summary(start_date=start_date, end_date=end_date)
+    return await service.get_summary(
+        current_user=current_user,
+        start_date=start_date,
+        end_date=end_date,
+    )

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.app.core.exceptions import EntityNotFoundException
-from src.app.database.models import AIConversationModel, AIMessageModel
+from src.app.database.models import AIConversationModel, AIMessageModel, UserModel
 from src.modules.ai.application.dtos import (
     ChatMessageRequest,
     MessageResponse,
@@ -37,7 +37,9 @@ class AIService:
             raise EntityNotFoundException("AIConversation", conversation_id)
         return convo
 
-    async def process_chat(self, payload: ChatMessageRequest) -> MessageResponse:
+    async def process_chat(
+        self, payload: ChatMessageRequest, current_user: UserModel
+    ) -> MessageResponse:
         # 1. Get or create conversation
         if payload.conversation_id:
             convo = await self.get_conversation(payload.conversation_id)
@@ -58,7 +60,7 @@ class AIService:
 
         # 3. Controlled Deterministic Tool Invocation: get live financial overview
         analytics = AnalyticsService(self.db)
-        overview = await analytics.get_overview()
+        overview = await analytics.get_overview(current_user=current_user)
 
         tool_data = {
             "net_worth": str(overview.net_worth),

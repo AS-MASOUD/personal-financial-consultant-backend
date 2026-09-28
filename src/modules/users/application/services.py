@@ -1,3 +1,4 @@
+from decimal import Decimal
 import uuid
 
 from sqlalchemy import delete, func, or_, select
@@ -153,6 +154,17 @@ class UserService:
             role=request.role.value,
             is_active=request.is_active,
             is_verified=True,
+            monthly_income=Decimal("0.0000"),
+            liquid_assets=Decimal("0.0000"),
+            investment_assets=Decimal("0.0000"),
+            total_liabilities=Decimal("0.0000"),
+            financial_goals=[],
+            has_completed_financial_onboarding=False,
+            risk_score=0,
+            risk_level=None,
+            risk_answers=None,
+            portfolio_suggestion=None,
+            has_completed_risk_onboarding=False,
         )
         db.add(user)
         await db.flush()

@@ -3,7 +3,9 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.app.database.models import UserModel
 from src.app.database.session import get_db_session
+from src.modules.auth.presentation.dependencies import get_current_user
 from src.modules.transactions.application.dtos import TransactionCreate, TransactionResponse
 from src.modules.transactions.application.services import TransactionService
 
@@ -20,10 +22,15 @@ async def list_transactions(
     asset_id: uuid.UUID | None = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    current_user: UserModel = Depends(get_current_user),
     service: TransactionService = Depends(get_transaction_service),
 ) -> list[TransactionResponse]:
     txs = await service.list_transactions(
-        account_id=account_id, asset_id=asset_id, limit=limit, offset=offset
+        current_user=current_user,
+        account_id=account_id,
+        asset_id=asset_id,
+        limit=limit,
+        offset=offset,
     )
     return [TransactionResponse.model_validate(t) for t in txs]
 
@@ -33,7 +40,8 @@ async def list_transactions(
 )
 async def create_transaction(
     payload: TransactionCreate,
+    current_user: UserModel = Depends(get_current_user),
     service: TransactionService = Depends(get_transaction_service),
 ) -> TransactionResponse:
-    tx = await service.create_transaction(payload)
+    tx = await service.create_transaction(payload, current_user=current_user)
     return TransactionResponse.model_validate(tx)
