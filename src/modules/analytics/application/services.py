@@ -154,6 +154,7 @@ class AnalyticsService:
             tx_stmt = (
                 select(TransactionModel)
                 .join(AccountModel, TransactionModel.account_id == AccountModel.id)
+                .options(selectinload(TransactionModel.account))
                 .where(AccountModel.user_id == current_user.id)
                 .order_by(TransactionModel.transaction_date.desc())
                 .limit(5)
@@ -330,12 +331,16 @@ class AnalyticsService:
 
         # 8. Recent Transactions
         tx_stmt = (
-            select(TransactionModel).order_by(TransactionModel.transaction_date.desc()).limit(5)
+            select(TransactionModel)
+            .options(selectinload(TransactionModel.account))
+            .order_by(TransactionModel.transaction_date.desc())
+            .limit(5)
         )
         tx_result = await self.db.execute(tx_stmt)
         recent_txs = [
             {
                 "id": str(t.id),
+                "account_name": t.account.name if t.account else "حساب",
                 "type": t.transaction_type,
                 "amount": float(t.total_amount),
                 "date": t.transaction_date.isoformat(),

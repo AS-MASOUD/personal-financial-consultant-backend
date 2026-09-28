@@ -50,6 +50,45 @@ async def test_overview_endpoint():
         assert len(data["asset_allocation"]) > 0
         assert "attention_items" in data
 
+        # Create an asset and a transaction to test recent_transactions and eager account loading
+        sym = f"OV_{uuid.uuid4().hex[:6].upper()}"
+        asset_res = await client.post(
+            "/api/v1/assets",
+            json={
+                "symbol": sym,
+                "name": "Overview Test Asset",
+                "asset_class": "equity",
+                "currency": "TOMAN",
+                "initial_price": "50000.00",
+                "is_active": True,
+            },
+        )
+        assert asset_res.status_code == 201
+        asset_id = asset_res.json()["id"]
+
+        tx_res = await client.post(
+            "/api/v1/transactions",
+            headers=headers,
+            json={
+                "platform": "مفید",
+                "asset_id": asset_id,
+                "transaction_type": "BUY",
+                "transaction_date": "2026-09-20T10:00:00Z",
+                "quantity": "5.0000",
+                "unit_price": "50000.00",
+                "total_amount": "250000.00",
+                "currency": "TOMAN",
+            },
+        )
+        assert tx_res.status_code == 201
+
+        # Test overview with transactions (verifies selectinload of t.account prevents MissingGreenlet)
+        response2 = await client.get("/api/v1/analytics/overview", headers=headers)
+        assert response2.status_code == 200
+        data2 = response2.json()
+        assert len(data2["recent_transactions"]) > 0
+        assert data2["recent_transactions"][0]["account_name"] is not None
+
 
 @pytest.mark.asyncio
 async def test_accounts_endpoints():
