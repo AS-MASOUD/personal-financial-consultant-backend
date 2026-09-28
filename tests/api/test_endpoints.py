@@ -95,6 +95,105 @@ async def test_assets_and_positions():
         positions = res_positions.json()
         assert isinstance(positions, list)
 
+        # Create an asset and a BUY transaction to guarantee a position
+        unique_sym = f"POS_{uuid.uuid4().hex[:6].upper()}"
+        asset_res = await client.post(
+            "/api/v1/assets",
+            json={
+                "symbol": unique_sym,
+                "name": "Position Test Asset",
+                "asset_class": "equity",
+                "currency": "TOMAN",
+                "initial_price": "100000.00",
+                "is_active": True,
+            },
+        )
+        assert asset_res.status_code == 201
+        test_asset_id = asset_res.json()["id"]
+
+        buy_res = await client.post(
+            "/api/v1/transactions",
+            headers=headers,
+            json={
+                "platform": "مفید",
+                "asset_id": test_asset_id,
+                "transaction_type": "BUY",
+                "transaction_date": "2026-09-15T12:00:00Z",
+                "quantity": "10.0000",
+                "unit_price": "100000.00",
+                "total_amount": "1000000.00",
+                "currency": "TOMAN",
+            },
+        )
+        assert buy_res.status_code == 201
+
+        # Check positions list
+        res_positions2 = await client.get("/api/v1/assets/positions", headers=headers)
+        assert res_positions2.status_code == 200
+        pos_list = res_positions2.json()
+        target_pos = next((p for p in pos_list if p["asset_id"] == test_asset_id), None)
+        assert target_pos is not None
+        pos_id = target_pos["id"]
+
+        # Edit/Update Position
+        patch_res = await client.patch(
+            f"/api/v1/assets/positions/{pos_id}",
+            headers=headers,
+            json={
+                "quantity": "15.5000",
+                "average_cost_basis": "105000.00",
+            },
+        )
+        assert patch_res.status_code == 200
+        updated_pos = patch_res.json()
+        assert float(updated_pos["quantity"]) == 15.5
+        assert float(updated_pos["average_cost_basis"]) == 105000.0
+
+        # Delete Position
+        del_res = await client.delete(f"/api/v1/assets/positions/{pos_id}", headers=headers)
+        assert del_res.status_code == 204
+
+        # Verify deletion
+        res_positions3 = await client.get("/api/v1/assets/positions", headers=headers)
+        assert not any(p["id"] == pos_id for p in res_positions3.json())
+
+
+@pytest.mark.asyncio
+async def test_asset_lifecycle_create_update_delete():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # Create asset
+        unique_sym = f"TST_{uuid.uuid4().hex[:6].upper()}"
+        create_res = await client.post(
+            "/api/v1/assets",
+            json={
+                "symbol": unique_sym,
+                "name": "Test Lifecycle Asset",
+                "asset_class": "equity",
+                "currency": "TOMAN",
+                "initial_price": "150000.00",
+                "is_active": True,
+            },
+        )
+        assert create_res.status_code == 201
+        asset_data = create_res.json()
+        asset_id = asset_data["id"]
+
+        # Update asset
+        patch_res = await client.patch(
+            f"/api/v1/assets/{asset_id}",
+            json={"is_active": False, "notes": "Deactivated test"},
+        )
+        assert patch_res.status_code == 200
+        assert patch_res.json()["is_active"] is False
+
+        # Delete asset
+        del_res = await client.delete(f"/api/v1/assets/{asset_id}")
+        assert del_res.status_code == 204
+
+        # Confirm deleted
+        get_res = await client.get(f"/api/v1/assets/{asset_id}")
+        assert get_res.status_code == 404
+
 
 @pytest.mark.asyncio
 async def test_liabilities_and_schedule():

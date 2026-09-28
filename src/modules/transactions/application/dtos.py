@@ -8,7 +8,8 @@ from src.shared.domain.currency import Currency
 
 
 class TransactionCreate(BaseModel):
-    account_id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    platform: str | None = None
     asset_id: uuid.UUID | None = None
     transaction_type: str = Field(
         ..., description="BUY, SELL, DEPOSIT, WITHDRAWAL, DIVIDEND, INTEREST, FEE, TRANSFER"

@@ -65,10 +65,11 @@ class AssetModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     price_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     positions: Mapped[list["AssetPositionModel"]] = relationship(
-        "AssetPositionModel", back_populates="asset"
+        "AssetPositionModel", back_populates="asset", cascade="all, delete-orphan"
     )
 
 
@@ -82,7 +83,7 @@ class AssetPositionModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         index=True,
     )
     asset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     quantity: Mapped[Decimal] = mapped_column(Numeric(28, 8), nullable=False, default=Decimal("0"))
     average_cost_basis: Mapped[Decimal] = mapped_column(

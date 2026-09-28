@@ -43,15 +43,59 @@ class TransactionService:
     async def create_transaction(
         self, payload: TransactionCreate, current_user: UserModel
     ) -> TransactionModel:
-        # Validate account exists and belongs to current user
-        stmt = select(AccountModel).where(
-            AccountModel.id == payload.account_id,
-            AccountModel.user_id == current_user.id,
-        )
-        result = await self.db.execute(stmt)
-        account = result.scalar_one_or_none()
-        if not account:
-            raise EntityNotFoundException("Account", payload.account_id)
+        # Determine target account: explicit account_id, platform lookup/creation, or user's default account
+        account: AccountModel | None = None
+
+        if payload.account_id:
+            stmt = select(AccountModel).where(
+                AccountModel.id == payload.account_id,
+                AccountModel.user_id == current_user.id,
+            )
+            result = await self.db.execute(stmt)
+            account = result.scalar_one_or_none()
+            if not account:
+                raise EntityNotFoundException("Account", payload.account_id)
+        elif payload.platform:
+            platform_name = payload.platform.strip()
+            stmt = select(AccountModel).where(
+                AccountModel.name == platform_name,
+                AccountModel.user_id == current_user.id,
+            )
+            result = await self.db.execute(stmt)
+            account = result.scalar_one_or_none()
+            if not account:
+                account = AccountModel(
+                    user_id=current_user.id,
+                    name=platform_name,
+                    account_type="investment",
+                    institution=platform_name,
+                    currency=payload.currency.value,
+                    current_balance=Decimal("0.0000"),
+                    is_active=True,
+                )
+                self.db.add(account)
+                await self.db.flush()
+                await self.db.refresh(account)
+        else:
+            stmt = select(AccountModel).where(
+                AccountModel.user_id == current_user.id,
+                AccountModel.is_active == True,  # noqa: E712
+            )
+            result = await self.db.execute(stmt)
+            account = result.scalars().first()
+            if not account:
+                account = AccountModel(
+                    user_id=current_user.id,
+                    name="کیف پول پیش‌فرض",
+                    account_type="investment",
+                    institution="سامانه",
+                    currency=payload.currency.value,
+                    current_balance=Decimal("0.0000"),
+                    is_active=True,
+                )
+                self.db.add(account)
+                await self.db.flush()
+                await self.db.refresh(account)
 
         # Asset validation if provided
         asset = None
@@ -81,7 +125,7 @@ class TransactionService:
 
             # Find or create position
             pos_stmt = select(AssetPositionModel).where(
-                AssetPositionModel.account_id == payload.account_id,
+                AssetPositionModel.account_id == account.id,
                 AssetPositionModel.asset_id == payload.asset_id,
             )
             pos_result = await self.db.execute(pos_stmt)
@@ -102,7 +146,7 @@ class TransactionService:
                     Decimal("0.0001"), rounding=ROUND_HALF_EVEN
                 )
                 position = AssetPositionModel(
-                    account_id=payload.account_id,
+                    account_id=account.id,
                     asset_id=payload.asset_id,
                     quantity=payload.quantity,
                     average_cost_basis=unit_cost,
@@ -118,7 +162,7 @@ class TransactionService:
             account.current_balance += net_proceeds
 
             pos_stmt = select(AssetPositionModel).where(
-                AssetPositionModel.account_id == payload.account_id,
+                AssetPositionModel.account_id == account.id,
                 AssetPositionModel.asset_id == payload.asset_id,
             )
             pos_result = await self.db.execute(pos_stmt)
@@ -130,8 +174,12 @@ class TransactionService:
 
             position.quantity -= payload.quantity
 
+        note_text = payload.notes
+        if payload.platform and not (note_text and payload.platform in note_text):
+            note_text = f"بستر / پلتفرم: {payload.platform} | {note_text}" if note_text else f"بستر / پلتفرم: {payload.platform}"
+
         transaction = TransactionModel(
-            account_id=payload.account_id,
+            account_id=account.id,
             asset_id=payload.asset_id,
             transaction_type=t_type,
             transaction_date=payload.transaction_date,
@@ -140,7 +188,7 @@ class TransactionService:
             total_amount=payload.total_amount,
             fee=payload.fee,
             currency=payload.currency.value,
-            notes=payload.notes,
+            notes=note_text,
             is_reconciled=True,
         )
         self.db.add(transaction)

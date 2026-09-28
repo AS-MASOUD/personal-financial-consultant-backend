@@ -10,12 +10,13 @@ from src.shared.domain.currency import Currency
 class LiabilityBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     liability_type: str = Field(
-        ..., description="mortgage, auto_loan, student_loan, personal_loan, credit_card"
+        default="personal_loan",
+        description="personal_loan, bank_loan, friend_borrowed, friend_lent, bnpl, mortgage, auto_loan, credit_card, other",
     )
-    lender: str | None = Field(None, max_length=100)
-    interest_rate_percent: Decimal = Field(..., ge=0, le=100)
-    monthly_payment: Decimal = Field(..., ge=0)
-    start_date: date
+    lender: str | None = Field(None, max_length=100, description="Bank, platform, or friend/counterparty name")
+    interest_rate_percent: Decimal = Field(default=Decimal("0.000"), ge=0, le=100)
+    monthly_payment: Decimal = Field(default=Decimal("0.0000"), ge=0)
+    start_date: date = Field(default_factory=date.today)
     maturity_date: date | None = None
     currency: Currency = Field(default=Currency.TOMAN)
 
@@ -23,6 +24,7 @@ class LiabilityBase(BaseModel):
 class LiabilityCreate(LiabilityBase):
     original_principal: Decimal = Field(..., gt=0)
     current_balance: Decimal | None = None
+    term_months: int | None = Field(default=None, ge=1, le=600)
 
 
 class LiabilityUpdate(BaseModel):

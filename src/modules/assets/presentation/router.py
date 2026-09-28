@@ -8,6 +8,7 @@ from src.app.database.session import get_db_session
 from src.modules.assets.application.dtos import (
     AssetCreate,
     AssetPositionResponse,
+    AssetPositionUpdate,
     AssetResponse,
     AssetUpdate,
     MarketRatesResponse,
@@ -49,9 +50,10 @@ async def trigger_market_sync(
 @assets_router.get("", response_model=list[AssetResponse])
 async def list_assets(
     asset_class: str | None = None,
+    is_active: bool | None = None,
     service: AssetService = Depends(get_asset_service),
 ) -> list[AssetResponse]:
-    assets = await service.list_assets(asset_class=asset_class)
+    assets = await service.list_assets(asset_class=asset_class, is_active=is_active)
     return [AssetResponse.model_validate(a) for a in assets]
 
 
@@ -62,6 +64,27 @@ async def list_positions(
     current_user: UserModel = Depends(get_current_user),
 ) -> list[AssetPositionResponse]:
     return await service.list_positions(user_id=current_user.id, account_id=account_id)
+
+
+@assets_router.patch("/positions/{position_id}", response_model=AssetPositionResponse)
+async def update_position(
+    position_id: uuid.UUID,
+    payload: AssetPositionUpdate,
+    service: AssetService = Depends(get_asset_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> AssetPositionResponse:
+    return await service.update_position(
+        position_id=position_id, payload=payload, user_id=current_user.id
+    )
+
+
+@assets_router.delete("/positions/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_position(
+    position_id: uuid.UUID,
+    service: AssetService = Depends(get_asset_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> None:
+    await service.delete_position(position_id=position_id, user_id=current_user.id)
 
 
 @assets_router.get("/{asset_id}", response_model=AssetResponse)

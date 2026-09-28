@@ -14,6 +14,7 @@ class AssetBase(BaseModel):
         ..., description="equity, fixed_income, commodity, real_estate, crypto, cash"
     )
     currency: Currency = Field(default=Currency.TOMAN)
+    is_active: bool = Field(default=True, description="Whether the asset is actively monitored and tradeable")
     notes: str | None = None
 
 
@@ -22,9 +23,12 @@ class AssetCreate(AssetBase):
 
 
 class AssetUpdate(BaseModel):
+    symbol: str | None = None
     name: str | None = None
     asset_class: str | None = None
+    currency: Currency | None = None
     current_price: Decimal | None = Field(None, ge=0)
+    is_active: bool | None = None
     notes: str | None = None
 
 
@@ -54,6 +58,11 @@ class AssetPositionResponse(BaseModel):
     asset_name: str
     asset_class: str
     currency: str
+
+
+class AssetPositionUpdate(BaseModel):
+    quantity: Decimal | None = Field(None, ge=0)
+    average_cost_basis: Decimal | None = Field(None, ge=0)
 
 
 class MarketQuoteDTO(BaseModel):

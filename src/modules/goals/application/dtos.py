@@ -10,24 +10,26 @@ from src.shared.domain.currency import Currency
 class GoalBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     category: str = Field(
-        ...,
-        description="emergency_fund, retirement, home_purchase, vacation, education, debt_payoff",
+        default="other",
+        description="emergency_fund, retirement, home_purchase, vacation, education, debt_payoff, real_estate, investment, other",
     )
-    target_amount: Decimal = Field(..., gt=0)
+    target_amount: Decimal = Field(default=Decimal("0.0000"), ge=0)
     current_amount: Decimal = Field(default=Decimal("0.0000"), ge=0)
-    currency: Currency = Field(default=Currency.USD)
-    target_date: date
+    currency: Currency = Field(default=Currency.TOMAN)
+    target_date: date | None = None
     monthly_contribution: Decimal = Field(default=Decimal("0.0000"), ge=0)
     status: str = Field(default="in_progress")
     notes: str | None = None
 
 
 class GoalCreate(GoalBase):
-    pass
+    target_amount: Decimal = Field(..., gt=0)
+    target_date: date = Field(..., description="Target completion date")
 
 
 class GoalUpdate(BaseModel):
     name: str | None = None
+    category: str | None = None
     target_amount: Decimal | None = None
     current_amount: Decimal | None = None
     monthly_contribution: Decimal | None = None

@@ -163,7 +163,7 @@ class UserResponse(BaseModel):
     liquid_assets: Decimal | None = None
     investment_assets: Decimal | None = None
     total_liabilities: Decimal | None = None
-    financial_goals: list[str] | list[dict] | None = None
+    financial_goals: list | None = None
     has_completed_financial_onboarding: bool = False
     risk_score: int | None = None
     risk_level: str | None = None
