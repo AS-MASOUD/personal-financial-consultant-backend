@@ -1,15 +1,29 @@
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any
+import uuid
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.core.exceptions import EntityNotFoundException, FinancialCalculationException
-from src.app.database.models import LiabilityModel, LiabilityPaymentModel, UserModel
+from src.app.core.exceptions import (
+    EntityConflictException,
+    EntityNotFoundException,
+    FinancialCalculationException,
+)
+from src.app.database.models import (
+    LiabilityModel,
+    LiabilityPaymentModel,
+    LiabilityTypeModel,
+    UserModel,
+)
 from src.modules.liabilities.application.dtos import (
     LiabilityCreate,
     LiabilityPaymentCreate,
     LiabilityResponse,
+    LiabilityTypeCreate,
+    LiabilityTypeResponse,
+    LiabilityUpdate,
 )
 from src.shared.domain.currency import Currency
 
@@ -18,9 +32,47 @@ class LiabilityService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def list_liability_types(self, include_inactive: bool = False) -> list[LiabilityTypeModel]:
+        stmt = select(LiabilityTypeModel).order_by(
+            LiabilityTypeModel.display_order.asc(),
+            LiabilityTypeModel.created_at.asc(),
+        )
+        if not include_inactive:
+            stmt = stmt.where(LiabilityTypeModel.is_active.is_(True))
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_liability_labels(self) -> dict[str, str]:
+        types = await self.list_liability_types(include_inactive=True)
+        return {t.code: (t.short_label or t.label) for t in types}
+
+    async def create_liability_type(self, payload: LiabilityTypeCreate) -> LiabilityTypeModel:
+        stmt = select(LiabilityTypeModel).where(LiabilityTypeModel.code == payload.code)
+        existing = await self.db.execute(stmt)
+        if existing.scalar_one_or_none():
+            raise EntityConflictException(f"Liability type with code '{payload.code}' already exists")
+
+        new_type = LiabilityTypeModel(
+            code=payload.code,
+            label=payload.label,
+            short_label=payload.short_label,
+            description=payload.description,
+            icon=payload.icon,
+            default_rate=payload.default_rate,
+            default_term_months=payload.default_term_months,
+            is_friend=payload.is_friend,
+            direction=payload.direction,
+            display_order=payload.display_order,
+            is_active=payload.is_active,
+        )
+        self.db.add(new_type)
+        await self.db.flush()
+        return new_type
+
     async def list_liabilities(self, current_user: UserModel) -> list[LiabilityResponse]:
         stmt = (
             select(LiabilityModel)
+            .options(selectinload(LiabilityModel.type_config))
             .where(LiabilityModel.user_id == current_user.id)
             .order_by(LiabilityModel.current_balance.desc())
         )
@@ -52,6 +104,9 @@ class LiabilityService:
                     updated_at=liab.updated_at,
                     repaid_amount=repaid.quantize(Decimal("0.0001"), rounding=ROUND_HALF_EVEN),
                     repaid_percent=repaid_pct,
+                    type_config=LiabilityTypeResponse.model_validate(liab.type_config)
+                    if liab.type_config
+                    else None,
                 )
             )
         return responses
@@ -102,8 +157,55 @@ class LiabilityService:
         )
         self.db.add(liability)
         await self.db.flush()
-        await self.db.refresh(liability)
+        await self.db.refresh(liability, ["type_config"])
         return liability
+
+    async def update_liability(
+        self, liability_id: uuid.UUID, payload: LiabilityUpdate, current_user: UserModel
+    ) -> LiabilityModel:
+        stmt = (
+            select(LiabilityModel)
+            .options(selectinload(LiabilityModel.type_config))
+            .where(
+                LiabilityModel.id == liability_id,
+                LiabilityModel.user_id == current_user.id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        liability = result.scalar_one_or_none()
+        if not liability:
+            raise EntityNotFoundException("Liability", liability_id)
+
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            if key == "currency" and value is not None:
+                liability.currency = value.value if hasattr(value, "value") else str(value)
+            elif value is not None:
+                setattr(liability, key, value)
+
+        await self.db.flush()
+        await self.db.refresh(liability, ["type_config"])
+        return liability
+
+    async def get_liability_payments(
+        self, liability_id: uuid.UUID, current_user: UserModel
+    ) -> list[LiabilityPaymentModel]:
+        stmt = select(LiabilityModel).where(
+            LiabilityModel.id == liability_id,
+            LiabilityModel.user_id == current_user.id,
+        )
+        result = await self.db.execute(stmt)
+        liability = result.scalar_one_or_none()
+        if not liability:
+            raise EntityNotFoundException("Liability", liability_id)
+
+        p_stmt = (
+            select(LiabilityPaymentModel)
+            .where(LiabilityPaymentModel.liability_id == liability_id)
+            .order_by(LiabilityPaymentModel.payment_date.desc(), LiabilityPaymentModel.created_at.desc())
+        )
+        p_res = await self.db.execute(p_stmt)
+        return list(p_res.scalars().all())
 
     async def delete_liability(self, liability_id: uuid.UUID, current_user: UserModel) -> None:
         stmt = select(LiabilityModel).where(

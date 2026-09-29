@@ -29,10 +29,16 @@ class LiabilityCreate(LiabilityBase):
 
 class LiabilityUpdate(BaseModel):
     name: str | None = None
+    liability_type: str | None = None
+    lender: str | None = None
+    original_principal: Decimal | None = None
     current_balance: Decimal | None = None
     interest_rate_percent: Decimal | None = None
     monthly_payment: Decimal | None = None
+    start_date: date | None = None
     maturity_date: date | None = None
+    currency: Currency | None = None
+
 
 
 class LiabilityPaymentCreate(BaseModel):
@@ -66,3 +72,31 @@ class LiabilityResponse(LiabilityBase):
     updated_at: datetime
     repaid_amount: Decimal
     repaid_percent: Decimal
+    type_config: "LiabilityTypeResponse | None" = None
+
+
+class LiabilityTypeBase(BaseModel):
+    code: str = Field(..., min_length=1, max_length=50)
+    label: str = Field(..., min_length=1, max_length=100)
+    short_label: str | None = Field(None, max_length=100)
+    description: str | None = None
+    icon: str = Field(default="Building", max_length=50)
+    default_rate: Decimal = Field(default=Decimal("0.000"), ge=0, le=100)
+    default_term_months: int = Field(default=12, ge=1, le=600)
+    is_friend: bool = False
+    direction: str = Field(default="debt", description="debt or claim")
+    display_order: int = Field(default=0)
+    is_active: bool = True
+
+
+class LiabilityTypeCreate(LiabilityTypeBase):
+    pass
+
+
+class LiabilityTypeResponse(LiabilityTypeBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+

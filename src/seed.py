@@ -15,6 +15,7 @@ from src.app.database.models import (
     HistoricalSnapshotModel,
     LiabilityModel,
     LiabilityPaymentModel,
+    LiabilityTypeModel,
     NotificationModel,
     OTPRequestModel,
     SystemRole,
@@ -32,6 +33,7 @@ async def seed_data():
         await db.execute(delete(CashflowCategoryModel))
         await db.execute(delete(LiabilityPaymentModel))
         await db.execute(delete(LiabilityModel))
+        await db.execute(delete(LiabilityTypeModel))
         await db.execute(delete(TransactionModel))
         await db.execute(delete(AssetPositionModel))
         await db.execute(delete(AssetModel))
@@ -187,6 +189,142 @@ async def seed_data():
                 average_cost_basis=cost,
             )
             db.add(pos)
+        await db.flush()
+
+        print("Seeding Liability Types & Labels...")
+        liability_types = [
+            LiabilityTypeModel(
+                code="bank_loan",
+                label="وام بانکی",
+                short_label="وام بانکی",
+                description="تسهیلات بانکی با نرخ سود مصوب یا توافقی",
+                icon="Building",
+                default_rate=Decimal("18.000"),
+                default_term_months=24,
+                is_friend=False,
+                direction="debt",
+                display_order=1,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="friend_borrowed",
+                label="قرض گرفتن از دوست / آشنا",
+                short_label="قرض گرفته‌شده از دوست (بدهی)",
+                description="بدهی من به دیگری (سود ۰٪ قرض‌الحسنه)",
+                icon="ArrowDownLeft",
+                default_rate=Decimal("0.000"),
+                default_term_months=3,
+                is_friend=True,
+                direction="debt",
+                display_order=2,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="friend_lent",
+                label="قرض دادن به دوست / آشنا",
+                short_label="قرض داده‌شده به دوست (طلب)",
+                description="طلب من از دیگری / مطالبات مالی (سود ۰٪)",
+                icon="ArrowUpRight",
+                default_rate=Decimal("0.000"),
+                default_term_months=3,
+                is_friend=True,
+                direction="claim",
+                display_order=3,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="bnpl",
+                label="خرید اقساطی پلتفرمی (BNPL)",
+                short_label="خرید اقساطی پلتفرمی",
+                description="اقساط اسنپ‌پی، دیجی‌پی، ازکی‌وام، تارا و ...",
+                icon="CreditCard",
+                default_rate=Decimal("0.000"),
+                default_term_months=4,
+                is_friend=False,
+                direction="debt",
+                display_order=4,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="personal_loan",
+                label="وام شخصی / صندوق خانوادگی",
+                short_label="وام شخصی / صندوق",
+                description="صندوق‌های وام خانگی و قرض‌الحسنه کارمندی",
+                icon="Users",
+                default_rate=Decimal("4.000"),
+                default_term_months=12,
+                is_friend=False,
+                direction="debt",
+                display_order=5,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="mortgage",
+                label="وام مسکن",
+                short_label="وام مسکن",
+                description="تسهیلات خرید یا ودیعه مسکن و جعاله",
+                icon="Building",
+                default_rate=Decimal("23.000"),
+                default_term_months=60,
+                is_friend=False,
+                direction="debt",
+                display_order=6,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="auto_loan",
+                label="وام خودرو",
+                short_label="وام خودرو",
+                description="تسهیلات لیزینگ یا خرید خودرو",
+                icon="CreditCard",
+                default_rate=Decimal("23.000"),
+                default_term_months=36,
+                is_friend=False,
+                direction="debt",
+                display_order=7,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="student_loan",
+                label="وام تحصیلی",
+                short_label="وام تحصیلی",
+                description="تسهیلات دانشجویی و صندوق رفاه دانشجویان",
+                icon="GraduationCap",
+                default_rate=Decimal("4.000"),
+                default_term_months=36,
+                is_friend=False,
+                direction="debt",
+                display_order=8,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="credit_card",
+                label="کارت اعتباری",
+                short_label="کارت اعتباری",
+                description="اعتبار کارت بانکی با دوره تنفس یا بازپرداخت اقساطی",
+                icon="CreditCard",
+                default_rate=Decimal("18.000"),
+                default_term_months=12,
+                is_friend=False,
+                direction="debt",
+                display_order=9,
+                is_active=True,
+            ),
+            LiabilityTypeModel(
+                code="other",
+                label="سایر بدهی‌ها و تعهدات",
+                short_label="سایر تعهدات",
+                description="چک‌های صادره، بدهی بازار، تعهدات غیربانکی",
+                icon="AlertCircle",
+                default_rate=Decimal("0.000"),
+                default_term_months=6,
+                is_friend=False,
+                direction="debt",
+                display_order=10,
+                is_active=True,
+            ),
+        ]
+        db.add_all(liability_types)
         await db.flush()
 
         print("Seeding Liabilities...")

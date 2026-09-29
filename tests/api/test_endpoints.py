@@ -238,6 +238,25 @@ async def test_asset_lifecycle_create_update_delete():
 async def test_liabilities_and_schedule():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         headers = await get_auth_headers(client)
+
+        # Test liability types endpoint
+        res_types = await client.get("/api/v1/liabilities/types")
+        assert res_types.status_code == 200
+        types_data = res_types.json()
+        assert len(types_data) >= 8
+        type_codes = [t["code"] for t in types_data]
+        assert "bank_loan" in type_codes
+        assert "mortgage" in type_codes
+        assert "bnpl" in type_codes
+        assert "friend_borrowed" in type_codes
+
+        # Test liability labels endpoint
+        res_labels = await client.get("/api/v1/liabilities/labels")
+        assert res_labels.status_code == 200
+        labels_data = res_labels.json()
+        assert labels_data.get("bank_loan") == "وام بانکی"
+        assert labels_data.get("friend_borrowed") == "قرض گرفته‌شده از دوست (بدهی)"
+
         # Create liability
         liab_payload = {
             "name": "وام مسکن",
@@ -252,11 +271,35 @@ async def test_liabilities_and_schedule():
         }
         res_create = await client.post("/api/v1/liabilities", headers=headers, json=liab_payload)
         assert res_create.status_code == 201
+        created_liab = res_create.json()
+        assert created_liab["type_config"] is not None
+        assert created_liab["type_config"]["code"] == "mortgage"
 
         res = await client.get("/api/v1/liabilities", headers=headers)
         assert res.status_code == 200
         liabilities = res.json()
         assert len(liabilities) >= 1
+        assert liabilities[0]["type_config"] is not None
+
+        # Update liability (fill in missing data or update)
+        update_payload = {
+            "lender": "بانک مسکن مرکزی",
+            "monthly_payment": "1600000.00",
+        }
+        res_update = await client.patch(
+            f"/api/v1/liabilities/{created_liab['id']}", headers=headers, json=update_payload
+        )
+        assert res_update.status_code == 200
+        updated_data = res_update.json()
+        assert updated_data["lender"] == "بانک مسکن مرکزی"
+        assert Decimal(updated_data["monthly_payment"]) == Decimal("1600000.00")
+
+        # List payments
+        res_payments = await client.get(
+            f"/api/v1/liabilities/{created_liab['id']}/payments", headers=headers
+        )
+        assert res_payments.status_code == 200
+        assert isinstance(res_payments.json(), list)
 
         # Schedule calculation
         res_sched = await client.get(
@@ -266,6 +309,39 @@ async def test_liabilities_and_schedule():
         schedule = res_sched.json()
         assert len(schedule) == 12
         assert Decimal(str(schedule[-1]["remaining_balance"])) == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_liability_types_crud():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await get_auth_headers(client)
+
+        import uuid
+        custom_code = f"custom_type_{uuid.uuid4().hex[:6]}"
+        payload = {
+            "code": custom_code,
+            "label": "وام قرض‌الحسنه اختصاصی",
+            "short_label": "وام اختصاصی",
+            "description": "تسهیلات ویژه سازمانی",
+            "icon": "Users",
+            "default_rate": "2.0",
+            "default_term_months": 18,
+            "is_friend": False,
+            "direction": "debt",
+            "display_order": 99,
+            "is_active": True,
+        }
+        res = await client.post("/api/v1/liabilities/types", headers=headers, json=payload)
+        assert res.status_code == 201
+        data = res.json()
+        assert data["code"] == custom_code
+        assert data["label"] == "وام قرض‌الحسنه اختصاصی"
+
+        # Duplicate should fail with 409
+        res_dup = await client.post("/api/v1/liabilities/types", headers=headers, json=payload)
+        assert res_dup.status_code == 409
+
+
 
 
 @pytest.mark.asyncio
@@ -312,3 +388,38 @@ async def test_ai_chat():
         data = res.json()
         assert data["role"] == "assistant"
         assert "Net Worth" in data["content"] or "Financial" in data["content"]
+
+
+@pytest.mark.asyncio
+async def test_wealth_trajectory_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await get_auth_headers(client)
+        res = await client.get("/api/v1/analytics/wealth-trajectory?history_days=90&forecast_months=12", headers=headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert "timeline" in data
+        assert len(data["timeline"]) > 0
+        assert "baseline_investments" in data
+        assert "baseline_liabilities" in data
+        assert "ai_narrative" in data
+        assert "loans" in data
+        assert "investments" in data
+        assert "incomes" in data
+
+        # Verify historical vs forecast points
+        hist_points = [p for p in data["timeline"] if not p["is_forecast"]]
+        fore_points = [p for p in data["timeline"] if p["is_forecast"]]
+        assert len(hist_points) >= 1
+        assert len(fore_points) == 12
+
+        # Verify liabilities decline or reach 0 over forecast
+        if len(fore_points) > 1 and Decimal(str(fore_points[0]["total_liabilities"])) > 0:
+            first_liab = Decimal(str(fore_points[0]["total_liabilities"]))
+            last_liab = Decimal(str(fore_points[-1]["total_liabilities"]))
+            assert last_liab <= first_liab
+
+        # Verify investments ascend over forecast
+        if len(fore_points) > 1 and Decimal(str(fore_points[0]["total_investments"])) > 0:
+            first_inv = Decimal(str(fore_points[0]["total_investments"]))
+            last_inv = Decimal(str(fore_points[-1]["total_investments"]))
+            assert last_inv >= first_inv

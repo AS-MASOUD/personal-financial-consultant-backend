@@ -124,6 +124,30 @@ class TransactionModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     asset: Mapped[Optional["AssetModel"]] = relationship("AssetModel")
 
 
+class LiabilityTypeModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "liability_types"
+
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    short_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), nullable=False, default="Building")
+    default_rate: Mapped[Decimal] = mapped_column(
+        Numeric(6, 3), nullable=False, default=Decimal("0.000")
+    )
+    default_term_months: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
+    is_friend: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    direction: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="debt"
+    )  # debt, claim
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    liabilities: Mapped[list["LiabilityModel"]] = relationship(
+        "LiabilityModel", back_populates="type_config"
+    )
+
+
 class LiabilityModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "liabilities"
 
@@ -135,8 +159,10 @@ class LiabilityModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     liability_type: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # mortgage, auto_loan, student_loan, personal_loan, credit_card
+        String(50),
+        ForeignKey("liability_types.code", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+    )  # mortgage, auto_loan, student_loan, personal_loan, credit_card, etc.
     lender: Mapped[str | None] = mapped_column(String(100), nullable=True)
     original_principal: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     current_balance: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
@@ -146,6 +172,9 @@ class LiabilityModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     maturity_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
 
+    type_config: Mapped[Optional["LiabilityTypeModel"]] = relationship(
+        "LiabilityTypeModel", back_populates="liabilities"
+    )
     payments: Mapped[list["LiabilityPaymentModel"]] = relationship(
         "LiabilityPaymentModel", back_populates="liability", cascade="all, delete-orphan"
     )
