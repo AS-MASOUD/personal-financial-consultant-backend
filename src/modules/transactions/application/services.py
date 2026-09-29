@@ -1,10 +1,14 @@
 import uuid
 from decimal import ROUND_HALF_EVEN, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.core.exceptions import EntityNotFoundException, FinancialCalculationException
+from src.app.core.exceptions import (
+    AppException,
+    EntityNotFoundException,
+    FinancialCalculationException,
+)
 from src.app.database.models import (
     AccountModel,
     AssetModel,
@@ -97,6 +101,17 @@ class TransactionService:
                 await self.db.flush()
                 await self.db.refresh(account)
 
+        # Validate that at least one active asset exists in the system catalog
+        stmt_active_count = select(func.count(AssetModel.id)).where(AssetModel.is_active == True)  # noqa: E712
+        active_assets_count = (await self.db.execute(stmt_active_count)).scalar() or 0
+
+        if active_assets_count == 0:
+            raise AppException(
+                message="برای ثبت تراکنش، ابتدا باید حداقل یک نوع دارایی را ثبت و فعال کنید. لطفاً به کاتالوگ دارایی‌ها مراجعه نمایید.",
+                code="NO_ACTIVE_ASSETS",
+                status_code=400,
+            )
+
         # Asset validation if provided
         asset = None
         if payload.asset_id:
@@ -105,6 +120,12 @@ class TransactionService:
             asset = result.scalar_one_or_none()
             if not asset:
                 raise EntityNotFoundException("Asset", payload.asset_id)
+            if not asset.is_active:
+                raise AppException(
+                    message=f"دارایی «{asset.name} ({asset.symbol})» غیرفعال است. جهت ثبت تراکنش، ابتدا این دارایی را از کاتالوگ دارایی‌ها فعال نمایید.",
+                    code="INACTIVE_ASSET",
+                    status_code=400,
+                )
 
         t_type = payload.transaction_type.upper()
 

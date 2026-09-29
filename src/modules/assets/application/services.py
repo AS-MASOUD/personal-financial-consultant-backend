@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.app.core.exceptions import EntityConflictException, EntityNotFoundException
-from src.app.database.models import AccountModel, AssetModel, AssetPositionModel
+from src.app.database.models import AccountModel, AssetClassModel, AssetModel, AssetPositionModel
 from src.modules.assets.application.dtos import (
+    AssetClassCreate,
     AssetCreate,
     AssetPositionResponse,
     AssetPositionUpdate,
@@ -181,4 +182,34 @@ class AssetService:
         await self.db.delete(position)
         await self.db.flush()
 
+    # ── Asset Class (reference data) ─────────────────────────────────
 
+    async def list_asset_classes(self) -> list[AssetClassModel]:
+        stmt = (
+            select(AssetClassModel)
+            .where(AssetClassModel.is_active.is_(True))
+            .order_by(AssetClassModel.display_order)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def create_asset_class(self, payload: AssetClassCreate) -> AssetClassModel:
+        stmt = select(AssetClassModel).where(AssetClassModel.code == payload.code)
+        result = await self.db.execute(stmt)
+        if result.scalar_one_or_none():
+            raise EntityConflictException(
+                f"Asset class with code '{payload.code}' already exists."
+            )
+
+        asset_class = AssetClassModel(
+            code=payload.code,
+            label=payload.label,
+            description=payload.description,
+            icon=payload.icon,
+            display_order=payload.display_order,
+            is_active=payload.is_active,
+        )
+        self.db.add(asset_class)
+        await self.db.flush()
+        await self.db.refresh(asset_class)
+        return asset_class

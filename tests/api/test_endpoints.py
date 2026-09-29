@@ -423,3 +423,44 @@ async def test_wealth_trajectory_endpoint():
             first_inv = Decimal(str(fore_points[0]["total_investments"]))
             last_inv = Decimal(str(fore_points[-1]["total_investments"]))
             assert last_inv >= first_inv
+
+
+@pytest.mark.asyncio
+async def test_transaction_inactive_asset_validation():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = await get_auth_headers(client)
+
+        # Create an inactive asset
+        sym = f"INACT_{uuid.uuid4().hex[:6].upper()}"
+        asset_res = await client.post(
+            "/api/v1/assets",
+            json={
+                "symbol": sym,
+                "name": "Inactive Asset Test",
+                "asset_class": "equity",
+                "currency": "TOMAN",
+                "initial_price": "10000.00",
+                "is_active": False,
+            },
+        )
+        assert asset_res.status_code == 201
+        inactive_asset_id = asset_res.json()["id"]
+
+        # Attempt creating a transaction using the inactive asset -> should be rejected with HTTP 400
+        tx_res = await client.post(
+            "/api/v1/transactions",
+            headers=headers,
+            json={
+                "platform": "تست",
+                "asset_id": inactive_asset_id,
+                "transaction_type": "BUY",
+                "transaction_date": "2026-09-25T10:00:00Z",
+                "quantity": "1.0000",
+                "unit_price": "10000.00",
+                "total_amount": "10000.00",
+                "currency": "TOMAN",
+            },
+        )
+        assert tx_res.status_code == 400
+        assert "غیرفعال" in tx_res.json()["error"]["message"]
+

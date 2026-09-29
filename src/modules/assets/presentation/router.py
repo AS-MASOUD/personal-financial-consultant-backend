@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.app.database.models import UserModel
 from src.app.database.session import get_db_session
 from src.modules.assets.application.dtos import (
+    AssetClassCreate,
+    AssetClassResponse,
     AssetCreate,
     AssetPositionResponse,
     AssetPositionUpdate,
@@ -45,6 +47,24 @@ async def trigger_market_sync(
 ) -> MarketSyncResultResponse:
     """Manually trigger background synchronization of commodity, gold, forex, and crypto rates."""
     return await market_scheduler.trigger_manual_sync()
+
+@assets_router.get("/classes", response_model=list[AssetClassResponse])
+async def list_asset_classes(
+    service: AssetService = Depends(get_asset_service),
+) -> list[AssetClassResponse]:
+    """List all active asset class definitions (equity, crypto, commodity, etc.)."""
+    classes = await service.list_asset_classes()
+    return [AssetClassResponse.model_validate(c) for c in classes]
+
+
+@assets_router.post("/classes", response_model=AssetClassResponse, status_code=status.HTTP_201_CREATED)
+async def create_asset_class(
+    payload: AssetClassCreate,
+    service: AssetService = Depends(get_asset_service),
+) -> AssetClassResponse:
+    """Create a new asset class definition."""
+    asset_class = await service.create_asset_class(payload)
+    return AssetClassResponse.model_validate(asset_class)
 
 
 @assets_router.get("", response_model=list[AssetResponse])

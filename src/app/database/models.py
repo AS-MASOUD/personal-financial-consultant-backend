@@ -21,6 +21,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.app.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
+class AssetClassModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "asset_classes"
+
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), nullable=False, default="Layers")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    assets: Mapped[list["AssetModel"]] = relationship(
+        "AssetModel", back_populates="class_config"
+    )
+
+
 class AccountModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "accounts"
 
@@ -56,8 +71,10 @@ class AssetModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     symbol: Mapped[str] = mapped_column(String(30), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     asset_class: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # equity, fixed_income, commodity, real_estate, crypto, cash
+        String(50),
+        ForeignKey("asset_classes.code", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+    )
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="TOMAN")
     current_price: Mapped[Decimal] = mapped_column(
         Numeric(20, 4), nullable=False, default=Decimal("0.0000")
@@ -65,9 +82,12 @@ class AssetModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     price_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    class_config: Mapped[Optional["AssetClassModel"]] = relationship(
+        "AssetClassModel", back_populates="assets"
+    )
     positions: Mapped[list["AssetPositionModel"]] = relationship(
         "AssetPositionModel", back_populates="asset", cascade="all, delete-orphan"
     )
@@ -245,11 +265,30 @@ class CashflowEntryModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
 
+class GoalCategoryModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "goal_categories"
+
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), nullable=False, default="Target")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    goals: Mapped[list["FinancialGoalModel"]] = relationship(
+        "FinancialGoalModel", back_populates="category_config"
+    )
+
+
 class FinancialGoalModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "financial_goals"
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("goal_categories.code", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+    )
     target_amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     current_amount: Mapped[Decimal] = mapped_column(
         Numeric(20, 4), nullable=False, default=Decimal("0.0000")
@@ -263,6 +302,10 @@ class FinancialGoalModel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         String(30), nullable=False, default="in_progress"
     )  # in_progress, achieved, paused
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    category_config: Mapped[Optional["GoalCategoryModel"]] = relationship(
+        "GoalCategoryModel", back_populates="goals"
+    )
 
 
 class HistoricalSnapshotModel(Base, UUIDPrimaryKeyMixin):

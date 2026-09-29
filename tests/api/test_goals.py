@@ -87,3 +87,31 @@ async def test_goals_crud_and_onboarding_compatibility():
         res_list3 = await client.get("/api/v1/goals", headers=headers)
         assert res_list3.status_code == 200
         assert len(res_list3.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_goal_categories_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. GET /goals/categories
+        res = await client.get("/api/v1/goals/categories")
+        assert res.status_code == 200
+        categories = res.json()
+        assert isinstance(categories, list)
+
+        # 2. POST /goals/categories
+        code = f"custom_cat_{uuid.uuid4().hex[:6]}"
+        create_res = await client.post(
+            "/api/v1/goals/categories",
+            json={
+                "code": code,
+                "label": "دسته تستی",
+                "description": "توضیحات تست",
+                "icon": "Target",
+                "display_order": 99,
+                "is_active": True,
+            },
+        )
+        assert create_res.status_code == 201
+        created = create_res.json()
+        assert created["code"] == code
+        assert created["label"] == "دسته تستی"

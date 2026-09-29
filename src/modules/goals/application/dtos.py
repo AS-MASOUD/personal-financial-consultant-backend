@@ -47,3 +47,26 @@ class GoalResponse(GoalBase):
     progress_percent: Decimal
     remaining_amount: Decimal
     projected_completion_date: date | None = None
+
+
+class GoalCategoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    code: str
+    label: str
+    description: str | None = None
+    icon: str
+    display_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class GoalCategoryCreate(BaseModel):
+    code: str = Field(..., min_length=1, max_length=50)
+    label: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    icon: str = Field(default="Target", max_length=50)
+    display_order: int = Field(default=0)
+    is_active: bool = Field(default=True)

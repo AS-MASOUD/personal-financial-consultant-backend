@@ -7,11 +7,13 @@ from sqlalchemy import delete
 from src.app.core.security import hash_password
 from src.app.database.models import (
     AccountModel,
+    AssetClassModel,
     AssetModel,
     AssetPositionModel,
     CashflowCategoryModel,
     CashflowEntryModel,
     FinancialGoalModel,
+    GoalCategoryModel,
     HistoricalSnapshotModel,
     LiabilityModel,
     LiabilityPaymentModel,
@@ -37,8 +39,10 @@ async def seed_data():
         await db.execute(delete(TransactionModel))
         await db.execute(delete(AssetPositionModel))
         await db.execute(delete(AssetModel))
+        await db.execute(delete(AssetClassModel))
         await db.execute(delete(AccountModel))
         await db.execute(delete(FinancialGoalModel))
+        await db.execute(delete(GoalCategoryModel))
         await db.execute(delete(NotificationModel))
         await db.execute(delete(OTPRequestModel))
         await db.execute(delete(UserModel))
@@ -131,6 +135,60 @@ async def seed_data():
         db.add_all([checking, savings, brokerage, crypto_wallet])
         await db.flush()
 
+        print("Seeding Asset Classes...")
+        asset_classes = [
+            AssetClassModel(
+                code="equity",
+                label="سهام و ETF",
+                description="سهام شرکت‌ها و صندوق‌های قابل معامله در بورس",
+                icon="TrendingUp",
+                display_order=1,
+                is_active=True,
+            ),
+            AssetClassModel(
+                code="crypto",
+                label="ارز دیجیتال",
+                description="رمزارزها و توکن‌های دیجیتال",
+                icon="Gem",
+                display_order=2,
+                is_active=True,
+            ),
+            AssetClassModel(
+                code="commodity",
+                label="طلا و کالاها",
+                description="طلا، نقره، نفت، مس و سایر کالاهای فیزیکی",
+                icon="Coins",
+                display_order=3,
+                is_active=True,
+            ),
+            AssetClassModel(
+                code="fixed_income",
+                label="درآمد ثابت و اوراق",
+                description="اوراق قرضه، صکوک و ابزارهای درآمد ثابت",
+                icon="DollarSign",
+                display_order=4,
+                is_active=True,
+            ),
+            AssetClassModel(
+                code="real_estate",
+                label="املاک و مستغلات",
+                description="سرمایه‌گذاری در املاک و مستغلات",
+                icon="Building",
+                display_order=5,
+                is_active=True,
+            ),
+            AssetClassModel(
+                code="cash",
+                label="ارز و نقدینگی",
+                description="ارزهای فیات، حساب‌های جاری و سپرده‌های نقدی",
+                icon="Banknote",
+                display_order=6,
+                is_active=True,
+            ),
+        ]
+        db.add_all(asset_classes)
+        await db.flush()
+
         print("Seeding Assets...")
         assets_data = [
             ("VOO", "Vanguard S&P 500 ETF", "equity", Decimal("512.4000")),
@@ -154,6 +212,7 @@ async def seed_data():
                 currency="USD",
                 current_price=price,
                 price_updated_at=now,
+                is_active=True,
             )
             db.add(a)
             created_assets[sym] = a
@@ -489,6 +548,108 @@ async def seed_data():
                 is_recurring=True,
             )
             db.add(entry)
+        await db.flush()
+
+        print("Seeding Goal Categories...")
+        goal_categories = [
+            GoalCategoryModel(
+                code="emergency_fund",
+                label="صندوق اضطراری",
+                description="صندوق ذخیره اضطراری برای حوادث و رویدادهای غیرمترقبه",
+                icon="ShieldAlert",
+                display_order=1,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="retirement",
+                label="بازنشستگی و استقلال مالی",
+                description="صندوق بازنشستگی، استقلال مالی و پس‌انداز بلندمدت",
+                icon="Clock",
+                display_order=2,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="real_estate",
+                label="خرید مسکن و ملک",
+                description="خرید خانه، آپارتمان، زمین یا ودیعه مسکن",
+                icon="Home",
+                display_order=3,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="home_purchase",
+                label="خرید مسکن",
+                description="خرید خانه و مسکن",
+                icon="Home",
+                display_order=4,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="education",
+                label="آموزش و تحصیل",
+                description="دوره‌های آموزشی، تحصیل دانشگاهی و ارتقای مهارت",
+                icon="GraduationCap",
+                display_order=5,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="investment",
+                label="سرمایه‌گذاری هدفمند",
+                description="سرمایه‌گذاری در بورس، طلا، صندوق‌ها یا رمزارزها",
+                icon="TrendingUp",
+                display_order=6,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="debt_payoff",
+                label="تسویه کامل بدهی",
+                description="تسویه وام‌ها، اقساط و بدهی‌های شخصی",
+                icon="CreditCard",
+                display_order=7,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="vehicle",
+                label="خرید خودرو",
+                description="خرید یا تعویض خودرو و وسایل نقلیه",
+                icon="Car",
+                display_order=8,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="business",
+                label="کسب‌وکار شخصی",
+                description="راه‌اندازی، توسعه یا تجهیز کسب‌وکار و استارتاپ",
+                icon="Briefcase",
+                display_order=9,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="personal",
+                label="هدف شخصی",
+                description="اهداف و برنامه‌های شخصی و خانوادگی",
+                icon="User",
+                display_order=10,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="vacation",
+                label="سفر و تفریح",
+                description="هزینه‌های مسافرت، تفریح و اوقات فراغت",
+                icon="Plane",
+                display_order=11,
+                is_active=True,
+            ),
+            GoalCategoryModel(
+                code="other",
+                label="سایر اهداف",
+                description="سایر برنامه‌ها و اهداف مالی متفرقه",
+                icon="Target",
+                display_order=12,
+                is_active=True,
+            ),
+        ]
+        db.add_all(goal_categories)
         await db.flush()
 
         print("Seeding Financial Goals...")

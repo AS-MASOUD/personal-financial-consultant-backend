@@ -3,12 +3,18 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from src.app.core.exceptions import AuthenticationException, EntityNotFoundException
-from src.app.database.models import UserModel
-from src.modules.goals.application.dtos import GoalCreate, GoalResponse, GoalUpdate
+from src.app.core.exceptions import AuthenticationException, EntityConflictException, EntityNotFoundException
+from src.app.database.models import GoalCategoryModel, UserModel
+from src.modules.goals.application.dtos import (
+    GoalCategoryCreate,
+    GoalCreate,
+    GoalResponse,
+    GoalUpdate,
+)
 from src.shared.domain.currency import Currency
 
 
@@ -297,3 +303,35 @@ class GoalService:
         current_user.financial_goals = updated_goals
         flag_modified(current_user, "financial_goals")
         await self.db.flush()
+
+    # ── Goal Categories (reference data) ──────────────────────────────
+
+    async def list_goal_categories(self) -> list[GoalCategoryModel]:
+        stmt = (
+            select(GoalCategoryModel)
+            .where(GoalCategoryModel.is_active.is_(True))
+            .order_by(GoalCategoryModel.display_order)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def create_goal_category(self, payload: GoalCategoryCreate) -> GoalCategoryModel:
+        stmt = select(GoalCategoryModel).where(GoalCategoryModel.code == payload.code)
+        result = await self.db.execute(stmt)
+        if result.scalar_one_or_none():
+            raise EntityConflictException(
+                f"Goal category with code '{payload.code}' already exists."
+            )
+
+        cat = GoalCategoryModel(
+            code=payload.code,
+            label=payload.label,
+            description=payload.description,
+            icon=payload.icon,
+            display_order=payload.display_order,
+            is_active=payload.is_active,
+        )
+        self.db.add(cat)
+        await self.db.flush()
+        await self.db.refresh(cat)
+        return cat

@@ -484,6 +484,9 @@ class AuthService:
         if request.bio is not None:
             user.bio = request.bio.strip() if request.bio.strip() else None
 
+        if request.portfolio_suggestion is not None:
+            user.portfolio_suggestion = request.portfolio_suggestion
+
         await db.flush()
 
         audit = AuditEntryModel(
@@ -704,7 +707,11 @@ class AuthService:
         user.risk_score = result.total_score
         user.risk_level = result.risk_level
         user.risk_answers = request.answers
-        user.portfolio_suggestion = result.portfolio_suggestion
+        if request.custom_portfolio_allocation:
+            user.portfolio_suggestion = request.custom_portfolio_allocation
+            result.portfolio_suggestion = request.custom_portfolio_allocation
+        else:
+            user.portfolio_suggestion = result.portfolio_suggestion
         user.has_completed_risk_onboarding = True
 
         await db.flush()

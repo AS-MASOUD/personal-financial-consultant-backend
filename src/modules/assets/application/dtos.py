@@ -14,7 +14,7 @@ class AssetBase(BaseModel):
         ..., description="equity, fixed_income, commodity, real_estate, crypto, cash"
     )
     currency: Currency = Field(default=Currency.TOMAN)
-    is_active: bool = Field(default=True, description="Whether the asset is actively monitored and tradeable")
+    is_active: bool = Field(default=False, description="Whether the asset is actively monitored and tradeable")
     notes: str | None = None
 
 
@@ -93,4 +93,27 @@ class MarketSyncResultResponse(BaseModel):
     updated_assets_count: int
     total_quotes_fetched: int
     last_sync_time: datetime
+
+
+class AssetClassResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    code: str
+    label: str
+    description: str | None = None
+    icon: str
+    display_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssetClassCreate(BaseModel):
+    code: str = Field(..., min_length=1, max_length=50)
+    label: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    icon: str = Field(default="Layers", max_length=50)
+    display_order: int = Field(default=0)
+    is_active: bool = Field(default=True)
 

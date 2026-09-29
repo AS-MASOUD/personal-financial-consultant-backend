@@ -204,6 +204,9 @@ class FinancialOnboardingResponse(BaseModel):
 
 class RiskAssessmentRequest(BaseModel):
     answers: dict[str, int] = Field(..., description="Mapping of question index or key to chosen point (1-4)")
+    custom_portfolio_allocation: dict[str, float] | None = Field(
+        default=None, description="Optional custom target percentage allocation overrides"
+    )
 
 
 class RiskAssessmentResultResponse(BaseModel):
@@ -227,6 +230,7 @@ class ProfileUpdateRequest(BaseModel):
     age: int | None = Field(default=None, ge=10, le=120)
     job: str | None = Field(default=None, max_length=100)
     bio: str | None = Field(default=None, max_length=500)
+    portfolio_suggestion: dict[str, float] | None = Field(default=None)
 
     @field_validator("full_name")
     @classmethod

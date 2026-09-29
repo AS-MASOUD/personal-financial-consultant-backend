@@ -123,3 +123,28 @@ async def test_last_sysmanager_safeguard():
         # Attempt to delete self -> must fail
         del_res = await client.delete(f"/api/v1/users/{sys_id}", headers=sys_headers)
         assert del_res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_custom_portfolio_allocation_update():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        user_token = await get_auth_token(client, "user@personal-fc.local")
+        headers = {"Authorization": f"Bearer {user_token}"}
+
+        custom_alloc = {
+            "equities": 35.0,
+            "gold": 25.0,
+            "fixed_income": 20.0,
+            "crypto": 10.0,
+            "cash": 10.0,
+        }
+
+        patch_res = await client.patch(
+            "/api/v1/auth/me",
+            headers=headers,
+            json={"portfolio_suggestion": custom_alloc},
+        )
+        assert patch_res.status_code == 200
+        updated_user = patch_res.json()
+        assert updated_user["portfolio_suggestion"] == custom_alloc
+
