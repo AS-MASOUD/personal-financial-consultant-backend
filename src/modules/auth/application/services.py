@@ -73,8 +73,8 @@ class AuthService:
         return OTPResponse(
             identifier=str(data["identifier"]),
             channel=str(data["channel"]),
-            expires_in=int(data["expires_in"] or 120),
-            cooldown_seconds=int(data["cooldown_seconds"] or 60),
+            expires_in=int(data["expires_in"] or 180),
+            cooldown_seconds=int(data["cooldown_seconds"] or 120),
             debug_code=str(data["debug_code"]) if data.get("debug_code") else None,
             message="کد یکبار مصرف با موفقیت به شماره موبایل شما ارسال شد.",
         )
@@ -366,8 +366,8 @@ class AuthService:
         return OTPResponse(
             identifier=str(data["identifier"]),
             channel=str(data["channel"]),
-            expires_in=int(data["expires_in"] or 120),
-            cooldown_seconds=int(data["cooldown_seconds"] or 60),
+            expires_in=int(data["expires_in"] or 180),
+            cooldown_seconds=int(data["cooldown_seconds"] or 120),
             debug_code=str(data["debug_code"]) if data.get("debug_code") else None,
             message="کد یکبار مصرف با موفقیت ارسال شد.",
         )

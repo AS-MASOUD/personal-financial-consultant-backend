@@ -54,8 +54,8 @@ async def record_snapshot(
 
 @analytics_router.get("/wealth-trajectory", response_model=WealthTrajectoryResponse)
 async def get_wealth_trajectory(
-    history_days: int = Query(180, ge=30, le=730),
-    forecast_months: int = Query(24, ge=3, le=120),
+    history_days: int = Query(180, ge=1, le=730),
+    forecast_months: int = Query(24, ge=1, le=120),
     annual_growth_override: Decimal | None = Query(None, ge=0, le=200),
     current_user: UserModel = Depends(get_current_user),
     service: AnalyticsService = Depends(get_analytics_service),

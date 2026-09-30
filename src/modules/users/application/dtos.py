@@ -6,11 +6,12 @@ from src.app.database.models import SystemRole
 from src.modules.auth.application.dtos import UserResponse
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
-
+# Password must be at least 8 characters, include English letters, numbers and symbols
+PASSWORD_REGEX = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)(?=.*[^a-zA-Z0-9\s]).{8,128}$")
 
 class UserCreateRequest(BaseModel):
     email: str = Field(..., description="User email address")
-    password: str = Field(..., min_length=6, max_length=128, description="Initial password")
+    password: str = Field(..., min_length=8, max_length=128, description="Initial password")
     full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
     role: SystemRole = Field(default=SystemRole.USER, description="System role to assign")
     is_active: bool = Field(default=True, description="Account active status")
@@ -31,21 +32,25 @@ class UserCreateRequest(BaseModel):
             raise ValueError("Invalid email format")
         return clean
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if not PASSWORD_REGEX.match(v):
+            raise ValueError("Password must be at least 8 characters and include letters, numbers, and symbols.")
+        return v
 
 class UserUpdateRoleRequest(BaseModel):
     role: SystemRole = Field(..., description="New system role")
 
-
 class UserUpdateStatusRequest(BaseModel):
     is_active: bool = Field(..., description="New active status")
-
 
 class UserUpdateRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=50)
     email: str | None = Field(default=None)
     role: SystemRole | None = Field(default=None)
     is_active: bool | None = Field(default=None)
-    password: str | None = Field(default=None, min_length=6, max_length=128)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("full_name")
     @classmethod
@@ -67,6 +72,14 @@ class UserUpdateRequest(BaseModel):
             raise ValueError("Invalid email format")
         return clean
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not PASSWORD_REGEX.match(v):
+            raise ValueError("Password must be at least 8 characters and include letters, numbers, and symbols.")
+        return v
 
 class RoleDefinitionResponse(BaseModel):
     role: str
@@ -76,7 +89,6 @@ class RoleDefinitionResponse(BaseModel):
     description_en: str
     badge_color: str
     permissions: list[str]
-
 
 class UserListResponse(BaseModel):
     total: int

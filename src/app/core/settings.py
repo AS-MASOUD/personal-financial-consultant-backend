@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = "no-reply@personal-fc.local"
     SMTP_USE_TLS: bool = True
 
-    OTP_EXPIRE_SECONDS: int = 120
-    OTP_COOLDOWN_SECONDS: int = 60
+    OTP_EXPIRE_SECONDS: int = 180
+    OTP_COOLDOWN_SECONDS: int = 120
     OTP_DIGITS: int = 5
 
     # Asset Volatility Alert Threshold (%)

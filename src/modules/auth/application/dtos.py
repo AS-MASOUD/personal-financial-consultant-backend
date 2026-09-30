@@ -7,13 +7,23 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 IRAN_PHONE_REGEX = re.compile(r"^09\d{9}$")
+PASSWORD_REGEX = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)(?=.*[^a-zA-Z0-9\s]).{8,128}$")
 
 
 class UserRegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
     email: str | None = Field(default=None, description="User email address")
     phone_number: str | None = Field(default=None, description="Iranian mobile number (e.g. 09123456789)")
-    password: str | None = Field(default=None, min_length=6, max_length=128, description="User password")
+    password: str | None = Field(default=None, min_length=8, max_length=128, description="User password")
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not PASSWORD_REGEX.match(v):
+            raise ValueError("Password must be at least 8 characters and include letters, numbers, and symbols.")
+        return v
     code: str | None = Field(default=None, min_length=4, max_length=8, description="Optional OTP code")
 
     @field_validator("full_name")
@@ -51,7 +61,16 @@ class RegisterRequestOTP(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
     phone_number: str = Field(..., description="Iranian mobile number (e.g. 09123456789)")
     email: str | None = Field(default=None, description="User email address")
-    password: str | None = Field(default=None, min_length=6, max_length=128, description="User password")
+    password: str | None = Field(default=None, min_length=8, max_length=128, description="User password")
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not PASSWORD_REGEX.match(v):
+            raise ValueError("Password must be at least 8 characters and include letters, numbers, and symbols.")
+        return v
 
     @field_validator("full_name")
     @classmethod
@@ -86,7 +105,7 @@ class RegisterVerifyOTPRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=50, description="Full name")
     phone_number: str = Field(..., description="Iranian mobile number (e.g. 09123456789)")
     email: str | None = Field(default=None, description="User email address")
-    password: str | None = Field(default=None, min_length=6, max_length=128, description="User password")
+    password: str | None = Field(default=None, min_length=8, max_length=128, description="User password")
     code: str = Field(..., min_length=4, max_length=8, description="OTP code received")
 
     @field_validator("full_name")

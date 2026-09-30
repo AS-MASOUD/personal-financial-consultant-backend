@@ -79,18 +79,36 @@ class AnalyticsService:
             u_invested = (current_user.investment_assets or Decimal("0.0000")).quantize(
                 Decimal("0.0001"), rounding=ROUND_HALF_EVEN
             )
-            u_liabilities = (current_user.total_liabilities or Decimal("0.0000")).quantize(
-                Decimal("0.0001"), rounding=ROUND_HALF_EVEN
-            )
-            u_total_assets = u_liquid + u_invested
-            u_net_worth = u_total_assets - u_liabilities
-            u_debt_service = (
-                (u_liabilities * Decimal("0.05")).quantize(
+            # Query obligations specifically for this user
+            liab_stmt = select(LiabilityModel).where(LiabilityModel.user_id == current_user.id)
+            liab_res = await self.db.execute(liab_stmt)
+            user_liabs = liab_res.scalars().all()
+            user_obligations = [
+                {
+                    "id": str(liab.id),
+                    "name": liab.name,
+                    "monthly_payment": float(liab.monthly_payment),
+                    "remaining_balance": float(liab.current_balance),
+                    "due_day": liab.start_date.day,
+                }
+                for liab in user_liabs
+            ]
+
+            if user_liabs:
+                u_liabilities = sum((l.current_balance for l in user_liabs), Decimal("0.0000")).quantize(
                     Decimal("0.0001"), rounding=ROUND_HALF_EVEN
                 )
-                if u_liabilities > 0
-                else Decimal("0.0000")
-            )
+                u_debt_service = sum((l.monthly_payment for l in user_liabs), Decimal("0.0000")).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+                )
+            else:
+                u_liabilities = (current_user.total_liabilities or Decimal("0.0000")).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_EVEN
+                )
+                u_debt_service = Decimal("0.0000")
+
+            u_total_assets = u_liquid + u_invested
+            u_net_worth = u_total_assets - u_liabilities
             u_free_cashflow = u_income - u_debt_service
 
             u_allocation = []
@@ -140,21 +158,6 @@ class AnalyticsService:
                         action_link="/profile",
                     )
                 )
-
-            # Query obligations specifically for this user
-            liab_stmt = select(LiabilityModel).where(LiabilityModel.user_id == current_user.id)
-            liab_res = await self.db.execute(liab_stmt)
-            user_liabs = liab_res.scalars().all()
-            user_obligations = [
-                {
-                    "id": str(liab.id),
-                    "name": liab.name,
-                    "monthly_payment": float(liab.monthly_payment),
-                    "remaining_balance": float(liab.current_balance),
-                    "due_day": liab.start_date.day,
-                }
-                for liab in user_liabs
-            ]
 
             # Query recent transactions specifically for this user
             tx_stmt = (
@@ -406,10 +409,31 @@ class AnalyticsService:
             # Return empty list so charts show proper empty state for new user
             return []
         else:
+            stmt = (
+                select(HistoricalSnapshotModel)
+                .order_by(HistoricalSnapshotModel.snapshot_date.asc())
+                .limit(limit)
+            )
+            res = await self.db.execute(stmt)
+            db_snapshots = res.scalars().all()
+            if db_snapshots:
+                return [
+                    HistoricalSnapshotResponse.model_validate(s)
+                    for s in db_snapshots
+                ]
+
             # Snapshots reflecting user's financial profile
             u_liquid = current_user.liquid_assets or Decimal("0.0000")
             u_invested = current_user.investment_assets or Decimal("0.0000")
-            u_liab = current_user.total_liabilities or Decimal("0.0000")
+
+            liab_stmt = select(LiabilityModel).where(LiabilityModel.user_id == current_user.id)
+            liab_res = await self.db.execute(liab_stmt)
+            user_liabs = liab_res.scalars().all()
+            if user_liabs:
+                u_liab = sum((l.current_balance for l in user_liabs), Decimal("0.0000"))
+            else:
+                u_liab = current_user.total_liabilities or Decimal("0.0000")
+
             u_assets = u_liquid + u_invested
             u_net = u_assets - u_liab
             return [
@@ -693,7 +717,7 @@ class AnalyticsService:
         # 4. Construct Timeline
         timeline: list[TrajectoryTimelinePoint] = []
 
-        history_steps = max(3, min(12, history_days // 30))
+        history_steps = max(1, min(12, max(1, history_days // 30)))
         for step in range(history_steps, 0, -1):
             past_date = today - timedelta(days=step * 30)
             date_str = past_date.strftime("%Y-%m-%d")
